@@ -146,7 +146,7 @@ const ProfileSection = ({ db, userId, appId }) => {
     // Old Path: .../users/${userId}/profile/data
     // New Path: .../users/${userId}
     const docRef = doc(db, `/artifacts/${appId}/users/${userId}`);
-    
+
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         setProfile(prev => ({ ...prev, ...docSnap.data() }));
@@ -163,10 +163,10 @@ const ProfileSection = ({ db, userId, appId }) => {
       // Old Path: .../users/${userId}/profile/data
       // New Path: .../users/${userId}
       const docRef = doc(db, `/artifacts/${appId}/users/${userId}`);
-      
+
       // We also save the 'id' field explicitly, just in case n8n needs it in the body
       await setDoc(docRef, { ...profile, id: userId }, { merge: true });
-      
+
       setIsEditing(false);
     } catch (e) {
       console.error("Error saving profile:", e);
@@ -710,20 +710,20 @@ const App = () => {
       let cumulative = 0;
 
       const trend = data.bucket.map(b => {
-  const pts = b.dataset?.[0]?.point;
-  const deltaSteps = pts?.[0]?.value?.[0]?.intVal ?? 0;
+        const pts = b.dataset?.[0]?.point;
+        const deltaSteps = pts?.[0]?.value?.[0]?.intVal ?? 0;
 
-  cumulative += deltaSteps;
+        cumulative += deltaSteps;
 
-  return {
-    time: new Date(parseInt(b.startTimeMillis)).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit"
-    }),
-    steps: cumulative,       // used by the line
-    stepsArea: cumulative    // 👈 used by the gradient area
-  };
-});
+        return {
+          time: new Date(parseInt(b.startTimeMillis)).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit"
+          }),
+          steps: cumulative,       // used by the line
+          stepsArea: cumulative    // 👈 used by the gradient area
+        };
+      });
 
 
       setSteps3hTrend(trend);
@@ -775,16 +775,16 @@ const App = () => {
         };
       });
       // Convert to cumulative distance
-let cumulative = 0;
-const cumulativeTrend = trend.map(entry => {
-  cumulative += entry.km;
-  return {
-    time: entry.time,
-    km: parseFloat(cumulative.toFixed(2))
-  };
-});
+      let cumulative = 0;
+      const cumulativeTrend = trend.map(entry => {
+        cumulative += entry.km;
+        return {
+          time: entry.time,
+          km: parseFloat(cumulative.toFixed(2))
+        };
+      });
 
-setDistance3hTrend(cumulativeTrend);
+      setDistance3hTrend(cumulativeTrend);
     } catch (err) {
       console.error("3h Distance Error:", err);
     }
@@ -832,16 +832,16 @@ setDistance3hTrend(cumulativeTrend);
 
   const fetchWeeklySleep = useCallback(async () => {
     if (!googleAccessToken) return;
-  
+
     const now = Date.now();
     const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-  
+
     const url =
       `https://www.googleapis.com/fitness/v1/users/me/sessions?` +
       `startTime=${new Date(sevenDaysAgo).toISOString()}` +
       `&endTime=${new Date(now).toISOString()}` +
       `&activityType=72`;
-  
+
     try {
       const res = await exponentialBackoffFetch(url, {
         method: "GET",
@@ -850,46 +850,46 @@ setDistance3hTrend(cumulativeTrend);
           "Content-Type": "application/json",
         },
       });
-  
+
       const data = await res.json();
       const sessions = data.session || [];
-  
+
       // Group by day
       const daily = {};
-  
+
       sessions.forEach((s) => {
         const start = new Date(parseInt(s.startTimeMillis));
         const end = new Date(parseInt(s.endTimeMillis));
         const hours = (end - start) / (1000 * 60 * 60);
-  
+
         const dayKey = start.toISOString().split("T")[0];
-  
+
         if (!daily[dayKey]) daily[dayKey] = 0;
         daily[dayKey] += hours;
       });
-  
+
       // Build final chart list (sorted)
-     const result = Object.keys(daily)
-    .sort()
-    .map((d) => {
-      const dateObj = new Date(d);
-      const label =
-        dateObj.toLocaleDateString("en-US", { weekday: "short" }) +
-        " "; // Sat 23
-  
-      return {
-        name: label,
-        hours: Math.round(daily[d] * 10) / 10,
-      };
-    });
-  
+      const result = Object.keys(daily)
+        .sort()
+        .map((d) => {
+          const dateObj = new Date(d);
+          const label =
+            dateObj.toLocaleDateString("en-US", { weekday: "short" }) +
+            " "; // Sat 23
+
+          return {
+            name: label,
+            hours: Math.round(daily[d] * 10) / 10,
+          };
+        });
+
       setSleepTrend(result);
     } catch (err) {
       console.error("Weekly Sleep Error:", err);
       setSleepTrend([]);
     }
   }, [googleAccessToken]);
-  
+
 
   // Calories (merged source) — matches Google Fit app totals
   const fetchCalories = useCallback(async () => {
@@ -1066,51 +1066,51 @@ setDistance3hTrend(cumulativeTrend);
   }, [googleAccessToken]);
 
   const fetchWeeklyDistance = useCallback(async () => {
-  if (!googleAccessToken) return;
+    if (!googleAccessToken) return;
 
-  const now = Date.now();
-  const start = now - 7 * 24 * 60 * 60 * 1000; // last 7 days
+    const now = Date.now();
+    const start = now - 7 * 24 * 60 * 60 * 1000; // last 7 days
 
-  const body = {
-    aggregateBy: [{
-      dataTypeName: "com.google.distance.delta",
-      dataSourceId: "derived:com.google.distance.delta:com.google.android.gms:merge_distance_delta"
-    }],
-    bucketByTime: { durationMillis: 24 * 60 * 60 * 1000 }, // 1 day per bucket
-    startTimeMillis: start,
-    endTimeMillis: now
-  };
+    const body = {
+      aggregateBy: [{
+        dataTypeName: "com.google.distance.delta",
+        dataSourceId: "derived:com.google.distance.delta:com.google.android.gms:merge_distance_delta"
+      }],
+      bucketByTime: { durationMillis: 24 * 60 * 60 * 1000 }, // 1 day per bucket
+      startTimeMillis: start,
+      endTimeMillis: now
+    };
 
-  try {
-    const res = await fetch(
-      "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${googleAccessToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      }
-    );
+    try {
+      const res = await fetch(
+        "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${googleAccessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
+        }
+      );
 
-    const data = await res.json();
+      const data = await res.json();
 
-    const week = (data.bucket || []).map(b => {
-      const meters = b.dataset?.[0]?.point?.[0]?.value?.[0]?.fpVal || 0;
-      return {
-        day: new Date(parseInt(b.startTimeMillis)).toLocaleDateString([], {
-          weekday: "short"
-        }),
-        km: +(meters / 1000).toFixed(2)
-      };
-    });
+      const week = (data.bucket || []).map(b => {
+        const meters = b.dataset?.[0]?.point?.[0]?.value?.[0]?.fpVal || 0;
+        return {
+          day: new Date(parseInt(b.startTimeMillis)).toLocaleDateString([], {
+            weekday: "short"
+          }),
+          km: +(meters / 1000).toFixed(2)
+        };
+      });
 
-    setWeeklyDistance(week);
-  } catch (err) {
-    console.error("Weekly Distance Error:", err);
-  }
-}, [googleAccessToken]);
+      setWeeklyDistance(week);
+    } catch (err) {
+      console.error("Weekly Distance Error:", err);
+    }
+  }, [googleAccessToken]);
 
   const calculateHealthScore = useCallback(() => {
     let score = 0;
@@ -1378,9 +1378,31 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
 
     const systemInstruction = {
       parts: [{
-        text: 'You are a helpful and professional Health Navigator chatbot. Provide general, non-diagnostic information on medications, conditions, and health topics. Always state that your advice is not a substitute for professional medical consultation. Use Google Search for up-to-date context.'
+        text: `
+You are a helpful and professional Health Navigator chatbot.
+
+1. You are in a single continuous chat session.
+   - The "contents" you receive include the full recent conversation history.
+   - You MUST use that history for context when answering.
+
+2. MEMORY / CONTEXT BEHAVIOUR (VERY IMPORTANT):
+   - You CAN remember and refer to information the user told you earlier in THIS conversation.
+   - This includes their name, age, conditions they mention, medications, and other details.
+   - If the user asks things like "What is my name?" or "What did I just tell you?", answer using the information from earlier messages in this chat.
+   - DO NOT say that you "cannot retain personal information", that "each interaction is fresh", or that you "do not remember previous messages". Within this chat, you DO have access to prior messages through the provided contents.
+
+3. PRIVACY:
+   - Do NOT invent or assume any personal details that were not explicitly given in the conversation.
+   - Only use what is present in the chat history.
+
+4. MEDICAL BEHAVIOUR:
+   - Provide general, non-diagnostic information on medications, conditions, and health topics.
+   - Always clearly state that your guidance is NOT a substitute for professional medical consultation and is for general information only.
+   - Use Google Search (when available as a tool) for up-to-date medical and health context when needed.
+    `
       }]
     };
+
 
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
@@ -1463,28 +1485,24 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, isChatLoading]);
 
-  const handleClearChat = async () => {
-    if (!db || !userId) return;
+  const handleClearChat = () => {
     if (!window.confirm("Are you sure you want to clear the chat history?")) return;
 
-    try {
-      const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-      const q = query(chatCollectionRef);
-      const snapshot = await getDocs(q);
+    const now = Date.now();
 
-      const batch = writeBatch(db);
-      snapshot.docs.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
-      await batch.commit();
-
-      // State update is handled by onSnapshot, but we can force a reset if needed
-      // setChatHistory([initialChatWelcome]); 
-    } catch (e) {
-      console.error("Error clearing chat:", e);
-      setError("Failed to clear chat history.");
+    // Store a "clear marker" only on the client
+    if (userId) {
+      try {
+        localStorage.setItem(`chatClearedAt_${userId}`, String(now));
+      } catch (e) {
+        console.error("Failed to persist chat clear marker:", e);
+      }
     }
+
+    // Immediately clear the visible chat in this session
+    setChatHistory([INITIAL_CHAT_WELCOME]);
   };
+
 
   /** ---------------------------------------
    * Meds CRUD (unchanged)
@@ -1535,17 +1553,17 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
     try {
       const medCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/medications`);
       await addDoc(medCollectionRef, medicationData);
-      
+
       // >> NEW: Trigger n8n Webhook for scheduling/confirmation
       try {
         fetch('https://AdityaPrakash781-vytalcare-n8n.hf.space/webhook/new-medication', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                userId, 
-                medName: newMedication.name, 
-                times: validTimes 
-            })
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            medName: newMedication.name,
+            times: validTimes
+          })
         });
       } catch (webhookError) {
         console.warn("Failed to trigger n8n webhook", webhookError);
@@ -1729,7 +1747,7 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
               <p className="text-sm font-medium">
                 Due in {Math.floor(nextDose.diffMinutes / 60)}h {nextDose.diffMinutes % 60}m
               </p>
-              <button 
+              <button
                 onClick={() => handleMarkAsTaken(nextDose)}
                 className="px-4 py-2 bg-white text-primary font-bold rounded-xl text-sm hover:bg-slate-50 transition-colors shadow-sm"
               >
@@ -2083,58 +2101,58 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
 
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-bold text-text-main mb-6 flex items-center">
-            <Footprints size={25} color = "#0F766E" className="mr-2 text-secondary" />Steps Trend
+            <Footprints size={25} color="#0F766E" className="mr-2 text-secondary" />Steps Trend
           </h3>
-              <ResponsiveContainer width="100%" height={250}>
-      <LineChart data={steps3hTrend}>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={steps3hTrend}>
 
-        <defs>
-          <linearGradient id="stepsGradientFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0F766E" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#0F766E" stopOpacity={0} />
-          </linearGradient>
-        </defs>
+              <defs>
+                <linearGradient id="stepsGradientFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#0F766E" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#0F766E" stopOpacity={0} />
+                </linearGradient>
+              </defs>
 
-        <CartesianGrid strokeDasharray="3 3" stroke="#eef2f3" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#eef2f3" />
 
-        <XAxis dataKey="time" stroke="#94a3b8" tickLine={false} axisLine={false} fontSize={12}/>
-        <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} fontSize={12}/>
+              <XAxis dataKey="time" stroke="#94a3b8" tickLine={false} axisLine={false} fontSize={12} />
+              <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} fontSize={12} />
 
-        <Tooltip
-          formatter={(value, name) => {
-            if (name === "steps") {
-              return [`${value} steps`, "Steps"];
-            }
-            return null;
-          }}
-          contentStyle={{
-            backgroundColor: "#fff",
-            borderRadius: "12px",
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 4px 6px rgba(0,0,0,0.08)"
-          }}
-        />
+              <Tooltip
+                formatter={(value, name) => {
+                  if (name === "steps") {
+                    return [`${value} steps`, "Steps"];
+                  }
+                  return null;
+                }}
+                contentStyle={{
+                  backgroundColor: "#fff",
+                  borderRadius: "12px",
+                  border: "1px solid #e5e7eb",
+                  boxShadow: "0 4px 6px rgba(0,0,0,0.08)"
+                }}
+              />
 
-        {/* MAIN LINE */}
-        <Line
-          type="monotone"
-          dataKey="steps"
-          stroke="#0F766E"
-          strokeWidth={3}
-          dot={false}
-        />
+              {/* MAIN LINE */}
+              <Line
+                type="monotone"
+                dataKey="steps"
+                stroke="#0F766E"
+                strokeWidth={3}
+                dot={false}
+              />
 
-        {/* GRADIENT FILL UNDER LINE */}
-        <Area
-          type="monotone"
-          dataKey="stepsArea"
-          stroke="none"
-          fill="url(#stepsGradientFill)"
-          fillOpacity={1}
-        />
+              {/* GRADIENT FILL UNDER LINE */}
+              <Area
+                type="monotone"
+                dataKey="stepsArea"
+                stroke="none"
+                fill="url(#stepsGradientFill)"
+                fillOpacity={1}
+              />
 
-      </LineChart>
-    </ResponsiveContainer>
+            </LineChart>
+          </ResponsiveContainer>
 
         </div>
         <div className="relative bg-white p-6 rounded-3xl shadow-sm border border-slate-100 
@@ -2151,7 +2169,7 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
               margin={{ top: 20, right: 10, left: -10, bottom: 5 }}
             >
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              
+
               <XAxis
                 dataKey="day"
                 tick={{ fill: "#64748b", fontSize: 12, fontWeight: 500 }}
@@ -2188,42 +2206,42 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
         </div>
 
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                  <h3 className="text-lg font-bold text-text-main mb-6 flex items-center">
-                    <Moon size={25} color = "#6366F1" className="mr-2 text-secondary" />Sleep Trend</h3>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={sleepTrend}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis
-                        dataKey="name"
-                        tick={{ fill: "#64748b", fontSize: 12, fontWeight: 500 }}
-                          axisLine={false}
-                          tickLine={false}
-                      />
-                      <YAxis
-                              domain={[0, 12]}
-                              ticks={[0, 3, 6, 9, 12]}
-                              tick={{ fill: "#94a3b8", fontSize: 12 }}
-                              axisLine={false}
-                              tickLine={false}
-                              unit = " hrs"
-                              stroke="#E2E8F0"/>
-                      <Tooltip
-                            cursor={{ fill: "#EEF2FF" }}
-                            contentStyle={{
-                              borderRadius: "12px",
-                              border: "1px solid #E2E8F0",
-                              background: "white",
-                              padding: "10px 14px"
-                            }}/>
-                      <Bar
-                                  dataKey="hours"
-                                  radius = {[10,10,0,0]}
-                                  fill="#6366F1"
-                                  barSize={40} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-    </div>
+          <h3 className="text-lg font-bold text-text-main mb-6 flex items-center">
+            <Moon size={25} color="#6366F1" className="mr-2 text-secondary" />Sleep Trend</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={sleepTrend}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="name"
+                tick={{ fill: "#64748b", fontSize: 12, fontWeight: 500 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                domain={[0, 12]}
+                ticks={[0, 3, 6, 9, 12]}
+                tick={{ fill: "#94a3b8", fontSize: 12 }}
+                axisLine={false}
+                tickLine={false}
+                unit=" hrs"
+                stroke="#E2E8F0" />
+              <Tooltip
+                cursor={{ fill: "#EEF2FF" }}
+                contentStyle={{
+                  borderRadius: "12px",
+                  border: "1px solid #E2E8F0",
+                  background: "white",
+                  padding: "10px 14px"
+                }} />
+              <Bar
+                dataKey="hours"
+                radius={[10, 10, 0, 0]}
+                fill="#6366F1"
+                barSize={40} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
       {/* AI Assessment Report */}
       {
@@ -2278,86 +2296,116 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
     </div >
   );
 
-  const renderChatbotTab = () => (
-    <div className="flex flex-col h-[70vh] p-6 animate-fade-in">
-      <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
-        <h2 className="text-2xl font-bold text-text-main flex items-center">
-          <MessageSquare size={28} className="mr-3 text-primary" />
-          Health Chatbot
-        </h2>
+  const renderChatbotTab = () => {
+    // Read the last clear timestamp from localStorage
+    const clearedAtKey = userId ? `chatClearedAt_${userId}` : null;
+    const clearedAt = clearedAtKey ? Number(localStorage.getItem(clearedAtKey) || 0) : 0;
 
-        <button
-          onClick={handleClearChat}
-          className="ml-auto text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors flex items-center border border-red-100"
-          title="Clear Chat History"
-        >
-          <Trash2 size={14} className="mr-1" /> Clear
-        </button>
-      </div>
+    const rawMessages = Array.isArray(chatHistory) ? chatHistory : [];
 
-      <div className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-        {chatHistory.map((msg, index) => (
-          <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`flex max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 ${msg.role === 'user' ? 'bg-primary ml-3' : 'bg-secondary/10 mr-3'}`}>
-                {msg.role === 'user' ? <Activity size={16} className="text-white" /> : <MessageSquare size={16} className="text-secondary" />}
-              </div>
-              <div
-                className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${msg.role === 'user'
-                  ? 'bg-primary text-white rounded-tr-none'
-                  : 'bg-slate-50 text-text-main border border-slate-100 rounded-tl-none'
-                  }`}
-              >
-                <p className="whitespace-pre-wrap">{msg.text}</p>
-              </div>
-            </div>
-          </div>
-        ))}
-        {isChatLoading && (
-          <div className="flex justify-start">
-            <div className="flex max-w-[85%] flex-row">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3">
-                <MessageSquare size={16} className="text-secondary" />
-              </div>
-              <div className="p-4 rounded-2xl rounded-tl-none bg-slate-50 border border-slate-100 shadow-sm">
-                <div className="flex space-x-2">
-                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+    // Only show messages created AFTER the last clear time
+    let visibleMessages = rawMessages.filter(msg => {
+      // If createdAt is missing (e.g., INITIAL_CHAT_WELCOME), always show it
+      if (!msg.createdAt) return true;
+      return msg.createdAt > clearedAt;
+    });
+
+    // If nothing is visible, fall back to the welcome message
+    if (visibleMessages.length === 0) {
+      visibleMessages = [INITIAL_CHAT_WELCOME];
+    }
+
+    return (
+      <div className="flex flex-col h-[70vh] p-6 animate-fade-in">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
+          <h2 className="text-2xl font-bold text-text-main flex items-center">
+            <MessageSquare size={28} className="mr-3 text-primary" />
+            Health Chatbot
+          </h2>
+
+          <button
+            onClick={handleClearChat}
+            className="ml-auto text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors flex items-center border border-red-100"
+            title="Clear Chat History"
+          >
+            <Trash2 size={14} className="mr-1" /> Clear
+          </button>
+        </div>
+
+        <div className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+          {visibleMessages.map((msg, index) => (
+            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`flex max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 ${msg.role === 'user' ? 'bg-primary ml-3' : 'bg-secondary/10 mr-3'}`}>
+                  {msg.role === 'user'
+                    ? <Activity size={16} className="text-white" />
+                    : <MessageSquare size={16} className="text-secondary" />}
+                </div>
+                <div
+                  className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${msg.role === 'user'
+                    ? 'bg-primary text-white rounded-tr-none'
+                    : 'bg-slate-50 text-text-main border border-slate-100 rounded-tl-none'
+                    }`}
+                >
+                  <p className="whitespace-pre-wrap">{msg.text}</p>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-        <div ref={chatEndRef} />
-      </div>
+          ))}
 
-      <form onSubmit={(e) => {
-        e.preventDefault();
-        const message = chatInput.trim();
-        if (!message) return;
-        const currentMessage = message;
-        setChatInput('');
-        callChatbotAPI(currentMessage);
-      }} className="relative mt-2">
-        <input
-          type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)}
-          placeholder="Ask a health question..."
-          className="w-full p-4 pr-32 border border-slate-200 rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 focus:bg-white shadow-sm"
-        />
-        <button
-          type="submit"
-          disabled={!chatInput.trim() || isChatLoading}
-          className={`absolute right-2 top-2 bottom-2 px-6 rounded-xl font-semibold transition-all duration-200 flex items-center ${chatInput.trim() && !isChatLoading
-            ? 'bg-primary text-white shadow-md hover:bg-primary-dark hover:shadow-lg'
-            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-            }`}
+          {isChatLoading && (
+            <div className="flex justify-start">
+              <div className="flex max-w-[85%] flex-row">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3">
+                  <MessageSquare size={16} className="text-secondary" />
+                </div>
+                <div className="p-4 rounded-2xl rounded-tl-none bg-slate-50 border border-slate-100 shadow-sm">
+                  <div className="flex space-x-2">
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={chatEndRef} />
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const message = chatInput.trim();
+            if (!message) return;
+            const currentMessage = message;
+            setChatInput('');
+            callChatbotAPI(currentMessage);
+          }}
+          className="relative mt-2"
         >
-          <Send size={18} className="mr-2" /> Send
-        </button>
-      </form>
-    </div>
-  );
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder="Ask a health question."
+            className="w-full p-4 pr-32 border border-slate-200 rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 focus:bg-white shadow-sm"
+          />
+          <button
+            type="submit"
+            disabled={!chatInput.trim() || isChatLoading}
+            className={`absolute right-2 top-2 bottom-2 px-6 rounded-xl font-semibold transition-all duration-200 flex items-center ${chatInput.trim() && !isChatLoading
+              ? 'bg-primary text-white shadow-md hover:bg-primary-dark hover:shadow-lg'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+          >
+            <Send size={18} className="mr-2" /> Send
+          </button>
+        </form>
+      </div>
+    );
+  };
+
 
   /** ---------------------------------------
    * Error banner (unchanged)
@@ -2435,20 +2483,20 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
         <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-6 border-b border-slate-200">
           <div className="flex items-center mb-4 md:mb-0">
             <div className="w-25 h-25 rounded-xl flex items-center justify-center mr-3">
-            <img 
-              src="src\assets\iconn.png"
-              alt="VytalCare Logo" 
-              className="w-10 h-10 object-contain"
-              style={{ width: "50px", height: "50px",marginRight:"10px" }}
-            />
-          </div>
+              <img
+                src="src\assets\iconn.png"
+                alt="VytalCare Logo"
+                className="w-10 h-10 object-contain"
+                style={{ width: "50px", height: "50px", marginRight: "10px" }}
+              />
+            </div>
 
             <h1 className="text-3xl font-bold text-text-main tracking-tight"
-            style={{marginLeft: "-15px" }}>
+              style={{ marginLeft: "-15px" }}>
               VytalCare
-              
+
             </h1>
-            
+
 
           </div>
 
