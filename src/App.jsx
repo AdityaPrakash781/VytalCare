@@ -11,7 +11,7 @@ import appIcon from "./assets/iconn.png";
 
 
 
-import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info } from 'lucide-react';
+import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info, Mic, MicOff, Volume2, VolumeX, Globe, Paperclip } from 'lucide-react';
 
 /** ---------------------------------------
  * App Config (unchanged)
@@ -574,6 +574,8 @@ const App = () => {
   const [chatHistory, setChatHistory] = useState([INITIAL_CHAT_WELCOME]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [attachedImage, setAttachedImage] = useState(null); // NEW: image attached to next message
+  const [showAttachMenu, setShowAttachMenu] = useState(false); // NEW: show upload / camera choice
 
   // Google Fit auth token (unchanged)
   const [googleAccessToken, setGoogleAccessToken] = useState(null);
@@ -730,7 +732,12 @@ const App = () => {
   useEffect(() => {
     if (!db || !userId) return;
     const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-    const qChat = query(chatCollectionRef, orderBy('createdAt', 'asc'), limit(100));
+    // Filter messages created after the last clear time
+    const qChat = query(
+      chatCollectionRef,
+      orderBy('createdAt', 'asc'),
+      limit(100)
+    );
 
     const unsubscribe = onSnapshot(qChat, (snapshot) => {
       const chatMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -746,6 +753,162 @@ const App = () => {
 
     return () => unsubscribe();
   }, [db, userId, auth]);
+
+  // >> VOICE FEATURES <<
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(false); // New: Continuous Voice Mode
+  const [selectedLanguage, setSelectedLanguage] = useState('en-US');
+  const recognitionRef = useRef(null);
+
+  // Supported Languages (Updated with Indian Languages)
+  const LANGUAGES = [
+    { code: 'en-US', name: 'English (US)', voice: 'Google US English' },
+    { code: 'en-IN', name: 'English (India)', voice: 'Google UK English Female' }, // Fallback to UK if IN not found
+    { code: 'hi-IN', name: 'Hindi', voice: 'Google हिन्दी' },
+    { code: 'ta-IN', name: 'Tamil', voice: 'Google தமிழ்' },
+    { code: 'kn-IN', name: 'Kannada', voice: 'Google ಕನ್ನಡ' },
+    { code: 'te-IN', name: 'Telugu', voice: 'Google తెలుగు' },
+  ];
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setChatInput(transcript);
+        setIsListening(false);
+
+        // If in Voice Mode, automatically send the message
+        if (isVoiceMode) {
+          // We need to trigger the send logic. 
+          // Since callChatbotAPI is a function, we can call it directly.
+          // However, we need to ensure chatInput state is updated first.
+          // Actually, using the transcript directly is safer here to avoid state race conditions.
+          callChatbotAPI(transcript);
+          setChatInput(''); // Clear input after sending
+        }
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error("Speech recognition error", event.error);
+        setIsListening(false);
+        // In voice mode, if error is 'no-speech', maybe restart? 
+        // For now, let's stop to avoid infinite error loops.
+        if (isVoiceMode && event.error === 'no-speech') {
+          // Optional: restart listening?
+          // setIsListening(true); recognitionRef.current.start();
+        }
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  }, [isVoiceMode]); // Re-bind if voice mode changes (though refs usually stable)
+
+  // Update language for recognition
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = selectedLanguage;
+    }
+  }, [selectedLanguage]);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      setIsVoiceMode(false); // Stop voice mode if manually stopped
+    } else {
+      recognitionRef.current?.start();
+      setIsListening(true);
+    }
+  };
+
+  const startVoiceMode = () => {
+    setIsVoiceMode(true);
+    setSpeechEnabled(true); // Force enable TTS for voice mode
+    recognitionRef.current?.start();
+    setIsListening(true);
+  };
+
+  const stopVoiceMode = () => {
+    setIsVoiceMode(false);
+    recognitionRef.current?.stop();
+    window.speechSynthesis.cancel();
+    setIsListening(false);
+    setIsSpeaking(false);
+  };
+
+  const speakText = (text) => {
+    if ((!speechEnabled && !isVoiceMode) || !text) return;
+
+    // Cancel current speech
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = selectedLanguage;
+
+    // Try to find a matching voice - Prioritize "Natural" or "Google"
+    const voices = window.speechSynthesis.getVoices();
+    const langConfig = LANGUAGES.find(l => l.code === selectedLanguage);
+
+    let voice = null;
+    if (langConfig) {
+      // 1. Try specific voice name from config
+      voice = voices.find(v => v.name.includes(langConfig.voice));
+      // 2. Try any voice for the language
+      if (!voice) voice = voices.find(v => v.lang === selectedLanguage);
+    }
+    if (voice) utterance.voice = voice;
+
+    utterance.onstart = () => setIsSpeaking(true);
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      // Continuous Loop: If in Voice Mode, start listening again after speaking
+      if (isVoiceMode) {
+        setTimeout(() => {
+          recognitionRef.current?.start();
+          setIsListening(true);
+        }, 500); // Small delay for natural pause
+      }
+    };
+
+    utterance.onerror = (event) => {
+      console.error("Speech synthesis error", event);
+      setIsSpeaking(false);
+      // Even on error, try to continue the loop if in voice mode
+      if (isVoiceMode) {
+        setTimeout(() => {
+          recognitionRef.current?.start();
+          setIsListening(true);
+        }, 1000);
+      }
+    };
+
+
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  };
+
+  // Stop speaking on unmount
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
 
   // 3. Hydration Listener
@@ -1639,25 +1802,41 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
   /** ---------------------------------------
    * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE
    * -------------------------------------- */
-  const callChatbotAPI = useCallback(async (newMessage) => {
-    const apiKey = isLocalRun ? GEMINI_API_KEY : "";
-    if (!apiKey) {
-      setError("GEMINI API ERROR: Missing API Key in local run. Cannot chat.");
-      return;
-    }
-    setIsChatLoading(true);
+    /** ---------------------------------------
+   * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
+   * -------------------------------------- */
+  const callChatbotAPI = useCallback(
+    async (newMessage, imageInlineData = null) => {
+      const apiKey = isLocalRun ? GEMINI_API_KEY : "";
+      if (!apiKey) {
+        setError("GEMINI API ERROR: Missing API Key in local run. Cannot chat.");
+        return;
+      }
+      setIsChatLoading(true);
 
-    // Prepare history for API call (limit and convert format)
-    const contents = [...chatHistory, { role: 'user', text: newMessage }]
-      .slice(-10) // Keep the last 10 messages for context
-      .map(msg => ({
-        role: msg.role === 'model' ? 'model' : 'user', // Ensure role consistency
-        parts: [{ text: msg.text }]
-      }));
+      // Prepare history for API call (limit and convert format)
+      const contents = [
+        ...chatHistory,
+        { role: 'user', text: newMessage, imageInlineData }
+      ]
+        .slice(-10) // Keep the last 10 messages for context
+        .map(msg => {
+          const parts = [];
+          if (msg.text) {
+            parts.push({ text: msg.text });
+          }
+          if (msg.imageInlineData) {
+            parts.push({ inlineData: msg.imageInlineData });
+          }
+          return {
+            role: msg.role === 'model' ? 'model' : 'user',
+            parts
+          };
+        });
 
-    const systemInstruction = {
-      parts: [{
-        text: `
+      const systemInstruction = {
+        parts: [{
+          text: `
 You are a helpful and professional Health Navigator chatbot of VytalCare.
 
 1. You are in a single continuous chat session.
@@ -1678,91 +1857,196 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
    - Provide general, non-diagnostic information on medications, conditions, and health topics.
    - Always clearly state that your guidance is NOT a substitute for professional medical consultation and is for general information only.
    - Use Google Search (when available as a tool) for up-to-date medical and health context when needed.
-    `
-      }]
-    };
 
+5. IMAGE & PHOTO CLARITY (VERY IMPORTANT):
+   - Users may send photos of wounds, rashes, skin issues, or medicine strips.
+   - FIRST, briefly describe what you see in the image in simple language.
+   - THEN, explain what it *could* be, giving a few possible explanations instead of a single diagnosis.
+   - Clearly state that this is only an AI guess based on the photo and text, and that it is NOT a medical diagnosis.
+   - Encourage the user to see a doctor or emergency service if the wound looks deep, infected (pus, spreading redness, fever), very painful, or if they are worried.
+   - For medicine strips: try to identify the medicine name, common use, and important precautions, but remind users to double-check the strip and consult a professional before taking anything.
+`
+        }]
+      };
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
-    const payload = {
-      contents: contents,
-      tools: [{ "google_search": {} }],
-      systemInstruction: systemInstruction,
-    };
+      const payload = {
+        contents,
+        tools: [{ google_search: {} }],
+        systemInstruction
+      };
 
-    // 1. Prepare and Save User Message to Firestore
-    const userMessage = {
-      role: 'user',
-      text: newMessage,
-      sources: [],
-      createdAt: Date.now()
-    };
-
-    if (db && userId) {
-      try {
-        const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-        // Don't await, let it save in the background
-        addDoc(chatCollectionRef, userMessage);
-      } catch (e) {
-        console.error("Error saving user message to Firestore:", e);
-      }
-    }
-
-    // Optimistic UI update: add user message immediately
-    setChatHistory(prev => [...prev, userMessage]);
-
-
-    try {
-      const res = await exponentialBackoffFetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await res.json();
-      const candidate = result.candidates?.[0];
-      let modelText = "Sorry, I couldn't generate a response. Please check the console for API errors.";
-
-      if (candidate && candidate.content?.parts?.[0]?.text) {
-        modelText = candidate.content.parts[0].text;
-      } else if (result.error) {
-        modelText = `API Error: ${result.error.message}.`;
-      }
-
-      const modelMessage = {
-        role: 'model',
-        text: modelText,
+      // 1. Prepare and Save User Message to Firestore (text only)
+      const userMessage = {
+        role: 'user',
+        text: newMessage,
         sources: [],
         createdAt: Date.now()
       };
 
-      // 2. Save Model Response Message to Firestore
       if (db && userId) {
         try {
           const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-          // Await this to ensure the message is in the DB before the loading spinner disappears
-          await addDoc(chatCollectionRef, modelMessage);
+          addDoc(chatCollectionRef, userMessage);
         } catch (e) {
-          console.error("Error saving model message to Firestore:", e);
+          console.error("Error saving user message to Firestore:", e);
         }
       }
 
-      // The onSnapshot listener (in useEffect) will now handle updating the chatHistory state, 
-      // ensuring the UI reflects the persisted data accurately, including the IDs.
+      // Optimistic UI update: add user message immediately
+      setChatHistory(prev => [...prev, userMessage]);
 
-    } catch (e) {
-      console.error("Chatbot API Error:", e);
-      setChatHistory(prev => [...prev, { role: 'model', text: `Error fetching response: ${e.message}`, sources: [] }]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  }, [isLocalRun, chatHistory, db, userId]); // Dependency update: added db and userId
+      try {
+        const res = await exponentialBackoffFetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        const candidate = result.candidates?.[0];
+        let modelText = "Sorry, I couldn't generate a response. Please check the console for API errors.";
+
+        if (candidate && candidate.content?.parts?.length) {
+          modelText = candidate.content.parts.map(p => p.text || '').join('\n\n');
+        } else if (result.error) {
+          modelText = `API Error: ${result.error.message}.`;
+        }
+
+        const modelMessage = {
+          role: 'model',
+          text: modelText,
+          sources: [],
+          createdAt: Date.now()
+        };
+
+        // 2. Save Model Response Message to Firestore
+        if (db && userId) {
+          try {
+            const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
+            await addDoc(chatCollectionRef, modelMessage);
+          } catch (e) {
+            console.error("Error saving model message to Firestore:", e);
+          }
+        }
+
+        // Optimistic UI update: add model message immediately
+        setChatHistory(prev => [...prev, modelMessage]);
+
+        // Speak response if enabled
+        if (speechEnabled || isVoiceMode) {
+          speakText(modelText);
+        }
+
+      } catch (e) {
+        console.error("Chatbot API Error:", e);
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'model', text: `Error fetching response: ${e.message}`, sources: [], createdAt: Date.now() }
+        ]);
+        if (isVoiceMode) {
+          speakText("I'm sorry, I encountered an error. Please try again.");
+        }
+      } finally {
+        setIsChatLoading(false);
+      }
+    },
+    [isLocalRun, chatHistory, db, userId, speechEnabled, speakText, isVoiceMode]
+  );
 
   // Auto-scroll to bottom of chat
+    // Auto-scroll to bottom of chat + file input ref
   const chatEndRef = useRef(null);
+  const fileInputRef = useRef(null); // NEW: hidden file input for image upload
+  const cameraInputRef = useRef(null); // NEW: hidden file input for taking a photo
+
+  // === Camera modal state & refs ===
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const videoReff = useRef(null);   // <video> element inside the modal
+  const canvasReff = useRef(null);  // hidden <canvas> used to grab a frame
+  const [cameraStream, setCameraStream] = useState(null); // to stop camera later
+
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, isChatLoading]);
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    // Allow only images
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file (jpg, png, etc.)');
+      event.target.value = '';
+      return;
+    }
+    setAttachedImage(file);
+  };
+
+// ===== CAMERA HELPERS =====
+const startCamera = async () => {
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Camera is not supported in this browser.");
+      setIsCameraModalOpen(false);
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }, // back camera on phones, normal cam on laptop
+      audio: false
+    });
+
+    if (videoReff.current) {
+      videoReff.current.srcObject = stream;
+    }
+    setCameraStream(stream);
+  } catch (err) {
+    console.error("Error starting camera:", err);
+    alert("Could not access the camera. Check permissions and try again.");
+    setIsCameraModalOpen(false);
+  }
+};
+
+const stopCamera = () => {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    setCameraStream(null);
+  }
+};
+
+// When the modal opens/closes, start/stop the camera
+useEffect(() => {
+  if (isCameraModalOpen) {
+    startCamera();
+  } else {
+    stopCamera();
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isCameraModalOpen]);
+
+const handleCaptureFromCamera = () => {
+  const video = videoReff.current;
+  const canvas = canvasReff.current;
+  if (!video || !canvas) return;
+
+  const width = video.videoWidth || 640;
+  const height = video.videoHeight || 480;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, width, height);
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
+    setAttachedImage(file);      // same state you use for uploaded images
+    setIsCameraModalOpen(false); // close modal
+  }, "image/jpeg", 0.9);
+};
+
 
   const handleClearChat = () => {
     if (!window.confirm("Are you sure you want to clear the chat history?")) return;
@@ -1780,6 +2064,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
 
     // Immediately clear the visible chat in this session
     setChatHistory([INITIAL_CHAT_WELCOME]);
+    setAttachedImage(null); // also clear any attached image
   };
 
 
@@ -1833,20 +2118,20 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
       await addDoc(medCollectionRef, medicationData);
 
       // >> NEW: Trigger n8n Webhook for scheduling/confirmation
-      // try {
-      //   fetch('https://AdityaPrakash781-vytalcare-n8n.hf.space/webhook/new-medication', {
-      //     method: 'POST',
-      //     headers: { 'Content-Type': 'application/json' },
-      //     body: JSON.stringify({
-      //       userId,
-      //       medName: newMedication.name,
-      //       times: validTimes
-      //     })
-      //   });
-      // } catch (webhookError) {
-      //   console.warn("Failed to trigger n8n webhook", webhookError);
-      //   // We do not stop the app flow if the webhook fails, as the local save was successful
-      // }
+      try {
+        fetch('https://AdityaPrakash781-vytalcare-n8n.hf.space/webhook/new-medication', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            medName: newMedication.name,
+            times: validTimes
+          })
+        });
+      } catch (webhookError) {
+        console.warn("Failed to trigger n8n webhook", webhookError);
+        // We do not stop the app flow if the webhook fails, as the local save was successful
+      }
 
       setNewMedication({ name: '', dose: '', times: ['08:00'] });
       setIsAdding(false);
@@ -2529,7 +2814,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
                   backgroundColor: "#fff",
                   borderRadius: "12px",
                   border: "1px solid #e5e7eb",
-                  boxShadow: "0 4px 6px rgba(0,0,0,0.08)"
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
                 }}
               />
 
@@ -2696,6 +2981,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
     </div >
   );
 
+
   const renderChatbotTab = () => {
     // Read the last clear timestamp from localStorage
     const clearedAtKey = userId ? `chatClearedAt_${userId}` : null;
@@ -2716,13 +3002,115 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
     }
 
     return (
-      <div className="flex flex-col h-[70vh] p-6 animate-fade-in">
-        <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-700 mb-4">
-          <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
-            <MessageSquare size={28} className="mr-3 text-primary" />
-            Health Chatbot
-          </h2>
+      <div className="flex flex-col h-[70vh] p-6 animate-fade-in relative">
+        {/* Voice Mode Overlay */}
+        {isVoiceMode && (
+          <div className="absolute inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex flex-col items-center justify-center p-8 rounded-3xl animate-fade-in">
+            <div className="relative mb-8">
+              <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 ${isSpeaking ? 'bg-primary/20 scale-110' : isListening ? 'bg-red-500/10 scale-100' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 ${isSpeaking ? 'bg-primary text-white shadow-lg shadow-primary/30' : isListening ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse' : 'bg-slate-200 dark:bg-slate-700 text-slate-400'}`}>
+                  {isSpeaking ? <Volume2 size={48} /> : isListening ? <Mic size={48} /> : <MicOff size={48} />}
+                </div>
+              </div>
+              {/* Ripple effects */}
+              {isListening && (
+                <>
+                  <div className="absolute inset-0 rounded-full border-4 border-red-500/30 animate-ping" style={{ animationDuration: '2s' }} />
+                  <div className="absolute inset-0 rounded-full border-4 border-red-500/20 animate-ping" style={{ animationDuration: '2s', animationDelay: '0.5s' }} />
+                </>
+              )}
+            </div>
 
+            <h3 className="text-2xl font-bold text-text-main dark:text-white mb-2">
+              {isSpeaking ? "Speaking..." : isListening ? "Listening..." : "Processing..."}
+            </h3>
+            <p className="text-text-muted dark:text-slate-400 text-center max-w-md mb-8">
+              {isSpeaking ? "The AI is responding to you." : isListening ? "Go ahead, I'm listening." : "Please wait a moment."}
+            </p>
+
+            <button
+              onClick={stopVoiceMode}
+              className="px-8 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-text-main dark:text-white rounded-xl font-semibold transition-colors flex items-center gap-2"
+            >
+              <X size={20} /> Exit Voice Mode
+            </button>
+          </div>
+        )}
+
+                        <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-700 mb-4">
+          {/* Left: Title + Voice/Language controls */}
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
+              <MessageSquare size={28} className="mr-3 text-primary" />
+              Health Chatbot
+            </h2>
+
+            {/* Voice Controls */}
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+              {/* Voice Mode Toggle */}
+              <button
+                onClick={isVoiceMode ? stopVoiceMode : startVoiceMode}
+                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-all text-xs font-semibold ${
+                  isVoiceMode
+                    ? 'bg-red-500 text-white shadow-sm animate-pulse'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+                }`}
+                title={isVoiceMode ? "Exit Voice Mode" : "Start Voice Conversation"}
+              >
+                {isVoiceMode ? <MicOff size={14} /> : <Mic size={14} />}
+                {isVoiceMode ? "Exit Voice" : "Voice Mode"}
+              </button>
+
+              <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-600 mx-1"></div>
+
+              {/* Mute / TTS toggle */}
+              <button
+                onClick={() => {
+                  setSpeechEnabled(!speechEnabled);
+                  if (speechEnabled) stopSpeaking();
+                }}
+                className={`p-1.5 rounded-md transition-all ${
+                  speechEnabled
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+                title={speechEnabled ? "Disable Text-to-Speech" : "Enable Text-to-Speech"}
+              >
+                {speechEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              </button>
+
+              <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-600 mx-1"></div>
+
+              {/* Language selector */}
+              <div className="relative group">
+                <button className="flex items-center gap-1 p-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors">
+                  <Globe size={14} />
+                  {LANGUAGES.find(l => l.code === selectedLanguage)?.code
+                    .split('-')[0]
+                    .toUpperCase()}
+                </button>
+
+                {/* Language Dropdown */}
+                <div className="absolute top-full right-0 mt-1 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden z-50 hidden group-hover:block">
+                  {LANGUAGES.map(lang => (
+                    <button
+                      key={lang.code}
+                      onClick={() => setSelectedLanguage(lang.code)}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${
+                        selectedLanguage === lang.code
+                          ? 'text-primary font-bold bg-primary/5'
+                          : 'text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      {lang.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Clear button */}
           <button
             onClick={handleClearChat}
             className="ml-auto text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors flex items-center border border-red-100"
@@ -2731,6 +3119,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
             <Trash2 size={14} className="mr-1" /> Clear
           </button>
         </div>
+
 
         <div className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
           {visibleMessages.map((msg, index) => (
@@ -2773,39 +3162,225 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           <div ref={chatEndRef} />
         </div>
 
-        <form
+                <form
           onSubmit={(e) => {
             e.preventDefault();
-            const message = chatInput.trim();
-            if (!message) return;
-            const currentMessage = message;
+            const trimmed = chatInput.trim();
+
+            // Don't send empty message with no image
+            if (!trimmed && !attachedImage) return;
+
+            // Capture current values before clearing state
+            const messageToSend = trimmed || (attachedImage ? "Please help me understand this photo." : "");
+            const imageFile = attachedImage || null;
+
+            // Clear UI fields
             setChatInput('');
-            callChatbotAPI(currentMessage);
+            setAttachedImage(null);
+
+            if (imageFile) {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64 = reader.result.split(',')[1];
+                const imageInlineData = {
+                  data: base64,
+                  mimeType: imageFile.type || "image/jpeg",
+                };
+                callChatbotAPI(messageToSend, imageInlineData);
+              };
+              reader.readAsDataURL(imageFile);
+            } else {
+              callChatbotAPI(messageToSend, null);
+            }
           }}
           className="relative mt-2"
         >
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            placeholder="Ask a health question."
-            className="w-full p-4 pr-32 border border-slate-200 dark:border-slate-700 rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-900 dark:text-white shadow-sm"
-          />
-          <button
-            type="submit"
-            disabled={!chatInput.trim() || isChatLoading}
-            className={`absolute right-2 top-2 bottom-2 px-6 rounded-xl font-semibold transition-all duration-200 flex items-center ${chatInput.trim() && !isChatLoading
-              ? 'bg-primary text-white shadow-md hover:bg-primary-dark hover:shadow-lg'
-              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          {/* Attached image preview */}
+          {attachedImage && (
+            <div className="flex items-center gap-3 mb-2 px-2">
+              <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                <img
+                  src={URL.createObjectURL(attachedImage)}
+                  alt="Attached preview"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="flex-1 text-xs text-text-muted dark:text-slate-400">
+                <div className="font-semibold text-text-main dark:text-slate-100 mb-0.5">
+                  {attachedImage.name}
+                </div>
+                <div>
+                  Image attached. You can also type extra details before sending.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachedImage(null);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+                className="text-xs px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          <div className="relative w-full">
+            {/* Mic Button - Left */}
+            <button
+              type="button"
+              onClick={toggleListening}
+              className={`absolute left-2 top-2 bottom-2 w-10 flex items-center justify-center rounded-xl transition-all duration-200 ${
+                isListening
+                  ? 'bg-red-500 text-white animate-pulse shadow-md'
+                  : 'text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
-          >
-            <Send size={18} className="mr-2" /> Send
-          </button>
+              title={isListening ? "Stop Listening" : "Start Voice Input"}
+            >
+              {isListening ? <MicOff size={20} /> : <Mic size={20} />}
+            </button>
+
+            {/* Hidden file input */}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment" 
+              ref={fileInputRef}
+              className="hidden"
+              onChange={handleFileChange}
+            />
+
+            {/* Hidden file input for camera */}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                ref={cameraInputRef}
+                className="hidden"
+                onChange={handleFileChange}
+              />
+
+            {/* Text input */}
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder={
+                isListening
+                  ? "Listening..."
+                  : "Ask a health question or upload a photo"
+              }
+              className={`w-full p-4 pl-14 pr-32 border rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm ${
+                isListening
+                  ? 'border-red-300 bg-red-50/50 dark:bg-red-900/20'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+              }`}
+            />
+
+            {/* Right-side buttons (attach + send) */}
+            <div className="absolute right-2 top-2 bottom-2 flex items-center gap-2">
+              {/* Attach image button */}
+              <button
+                type="button"
+                onClick={() => setShowAttachMenu(prev => !prev)} // NEW: toggle menu
+                className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                title="Upload/Take photo"
+              >
+                <Paperclip size={18} />
+              </button>
+
+              {showAttachMenu && (
+                  <div className="absolute right-12 top-0 mt-1 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-50 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAttachMenu(false);
+                        if (fileInputRef.current) fileInputRef.current.click(); // open file browser
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-t-xl"
+                    >
+                      Upload from computer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAttachMenu(false);
+                        setIsCameraModalOpen(true);   
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-b-xl border-t border-slate-100 dark:border-slate-700"
+                    >
+                      Take a photo
+                    </button>
+                  </div>
+                )}
+
+
+              {/* Send button */}
+              <button
+                type="submit"
+                disabled={(!chatInput.trim() && !attachedImage) || isChatLoading}
+                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${
+                  (!chatInput.trim() && !attachedImage) || isChatLoading
+                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                    : 'bg-primary text-white shadow-md hover:shadow-lg hover:-translate-y-0.5'
+                }`}
+              >
+                {isChatLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Send size={18} />
+                )}
+              </button>
+            </div>
+          </div>
         </form>
+                {isCameraModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3">
+              <h3 className="text-sm font-semibold text-text-main dark:text-slate-100 mb-1">
+                Take a photo
+              </h3>
+
+              {/* Live video preview */}
+              <div className="relative w-full rounded-xl overflow-hidden bg-black aspect-video">
+                <video
+                  ref={videoReff}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              {/* Hidden canvas just for capturing the frame */}
+              <canvas ref={canvasReff} className="hidden" />
+
+              <div className="flex justify-end gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick= {() => {
+                  stopCamera();
+                  setIsCameraModalOpen(false); }}
+                  className="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCaptureFromCamera}
+                  className="px-3 py-2 text-xs rounded-xl bg-primary text-white font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+                >
+                  Capture
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
-
 
   /** ---------------------------------------
    * Error banner (unchanged)
@@ -2871,6 +3446,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
     );
   };
 
+
+
   // =====================RENDER INFO================================
   const renderInfoModal = () => {
     if (!activeInfoMetric) return null;
@@ -2901,6 +3478,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
       </div>
     );
   };
+
+
   // =========================================================
 
   /** ---------------------------------------
