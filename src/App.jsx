@@ -11,7 +11,7 @@ import appIcon from "./assets/iconn.png";
 
 
 
-import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints } from 'lucide-react';
+import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info } from 'lucide-react';
 
 /** ---------------------------------------
  * App Config (unchanged)
@@ -454,6 +454,33 @@ const getTodayDateKey = () => {
   return `${year}-${month}-${day}`;
 };
 
+const METRIC_INFO = {
+  steps: {
+    title: "Daily Steps",
+    desc: "Walking is a low-impact exercise that boosts cardiovascular health. The 10,000 steps goal is a common standard for maintaining an active lifestyle, helping to reduce the risk of chronic diseases."
+  },
+  sleep: {
+    title: "Sleep Duration",
+    desc: "Quality sleep is essential for physical recovery and mental clarity. Most adults need between 7 and 9 hours. Consistent sleep patterns help regulate mood, improve memory, and strengthen the immune system."
+  },
+  calories: {
+    title: "Calories Burned",
+    desc: "This metric estimates the total energy your body has used today, including your resting metabolism (BMR) and active movement. Monitoring this helps in managing weight and energy levels."
+  },
+  hydration: {
+    title: "Hydration",
+    desc: "Water is vital for every cell in your body. It regulates temperature, lubricates joints, and aids digestion. A general goal is about 2-3 liters per day, depending on your activity level and climate."
+  },
+  distance: {
+    title: "Distance Covered",
+    desc: "This tracks the total kilometers you have walked or run today. Tracking distance is a great way to measure endurance and progress towards fitness goals."
+  },
+  heartRate: {
+    title: "Heart Rate",
+    desc: "Measured in Beats Per Minute (BPM). A lower resting heart rate (typically 60-100 BPM) generally indicates better cardiovascular fitness and efficient heart function."
+  }
+};
+
 const App = () => {
   // Firebase & core state
   const [db, setDb] = useState(null);
@@ -465,6 +492,8 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('reminders');
+  //For Metric Description
+  const [activeInfoMetric, setActiveInfoMetric] = useState(null);
 
   // Accessibility State
   const [theme, setTheme] = useState(() => {
@@ -2113,6 +2142,12 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Steps Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 dark:bg-primary/10 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+          <button 
+            onClick={() => setActiveInfoMetric('steps')}
+            className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-primary/70 hover:text-primary"
+          >
+            <Info size={18} />
+          </button>
           {stepCount !== null ? (
             <>
               <StepCompletionRing steps={stepCount} goal={DAILY_STEP_GOAL} size={160} />
@@ -2132,6 +2167,12 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Sleep Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+          <button 
+            onClick={() => setActiveInfoMetric('sleep')}
+            className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-indigo-500/70 hover:text-indigo-500"
+          >
+            <Info size={18} />
+          </button>
           {sleepHours !== null ? (
             <>
               <div className={`w-32 h-32 rounded-full flex items-center justify-center border-4 mb-4 ${sleepHours < RECOMMENDED_SLEEP_HOURS ? 'border-secondary/30 bg-secondary/5 dark:bg-secondary/10' : 'border-green-100 dark:border-green-900/50 bg-green-50 dark:bg-green-900/20'}`}>
@@ -2153,6 +2194,12 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Calories Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 dark:bg-orange-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+          <button 
+          onClick={() => setActiveInfoMetric('calories')}
+          className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-orange-500/70 hover:text-orange-500"
+        >
+          <Info size={18} />
+        </button>
           {calories !== null ? (
             <>
               <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/40 rounded-2xl flex items-center justify-center mb-4 text-orange-600 dark:text-orange-400">
@@ -2174,6 +2221,12 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Hydration Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-50 dark:bg-cyan-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+          <button 
+            onClick={() => setActiveInfoMetric('hydration')}
+            className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-cyan-500/70 hover:text-cyan-500"
+          >
+            <Info size={18} />
+          </button>
 
           <div className="w-16 h-16 bg-cyan-100 dark:bg-cyan-900/40 rounded-2xl flex items-center justify-center mb-4 text-cyan-600 dark:text-cyan-400">
             <Droplet size={32} fill="currentColor" />
@@ -2212,6 +2265,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Distance Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 dark:bg-blue-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+
+          <button 
+            onClick={() => setActiveInfoMetric('distance')}
+            className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-blue-500/70 hover:text-blue-500"
+          >
+            <Info size={18} />
+          </button>
+
           {distance !== null ? (
             <>
               <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/40 rounded-2xl flex items-center justify-center mb-4 text-blue-600 dark:text-blue-400">
@@ -2232,6 +2293,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Heart Rate Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 dark:bg-red-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+
+          <button 
+            onClick={() => setActiveInfoMetric('heartRate')}
+            className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-red-500/70 hover:text-red-500"
+          >
+            <Info size={18} />
+          </button>
+
           {heartRate !== null ? (
             <>
               <div className="w-16 h-16 bg-red-100 dark:bg-red-900/40 rounded-2xl flex items-center justify-center mb-4 text-red-600 dark:text-red-400 animate-pulse">
@@ -2692,6 +2761,38 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
     );
   };
 
+  // =====================RENDER INFO================================
+  const renderInfoModal = () => {
+    if (!activeInfoMetric) return null;
+    const info = METRIC_INFO[activeInfoMetric];
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setActiveInfoMetric(null)}>
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-2xl max-w-sm w-full border border-slate-100 dark:border-slate-700 transform transition-all scale-100 relative" onClick={e => e.stopPropagation()}>
+          <button onClick={() => setActiveInfoMetric(null)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-text-muted">
+            <X size={20} />
+          </button>
+          <div className="flex items-center mb-4">
+            <div className="p-3 bg-primary/10 rounded-xl mr-3">
+               <Info className="text-primary" size={24} />
+            </div>
+            <h3 className="text-xl font-bold text-text-main dark:text-white">{info.title}</h3>
+          </div>
+          <p className="text-text-muted dark:text-slate-300 leading-relaxed text-sm">
+            {info.desc}
+          </p>
+          <button 
+            onClick={() => setActiveInfoMetric(null)}
+            className="mt-6 w-full py-3 bg-primary text-white rounded-xl font-semibold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    );
+  };
+  // =========================================================
+
   /** ---------------------------------------
    * Render (unchanged)
    * -------------------------------------- */
@@ -2775,6 +2876,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
             {activeTab === 'emergency' && renderEmergencyTab()}
           </div>
         </div>
+        {renderInfoModal()}
       </div>
     </div>
   );
