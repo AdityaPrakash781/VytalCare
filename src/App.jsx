@@ -382,12 +382,12 @@ const LoginPage = ({ handleLogin, error }) => (
   <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-background dark:bg-slate-950">
     <div className="max-w-md w-full p-8 rounded-3xl shadow-xl bg-surface dark:bg-slate-900 text-center border border-slate-100 dark:border-slate-800 animate-fade-in">
       <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700">
-      <img 
-        src={appIcon} 
-        alt="VytalCare Logo" 
-        className="w-full h-full object-contain" 
-      />
-    </div>
+        <img
+          src={appIcon}
+          alt="VytalCare Logo"
+          className="w-full h-full object-contain"
+        />
+      </div>
       <h1 className="text-4xl font-bold mb-3 text-text-main dark:text-white tracking-tight">VytalCare</h1>
       <p className="text-lg mb-8 text-text-muted dark:text-slate-400">
         Your personal AI health companion. Sign in to manage medications and track your vitals.
@@ -495,6 +495,22 @@ const App = () => {
   //For Metric Description
   const [activeInfoMetric, setActiveInfoMetric] = useState(null);
 
+  // >> NEW: State for "Taken" Tracking and Time <<
+  const [takenMedications, setTakenMedications] = useState(new Set());
+  const [now, setNow] = useState(new Date());
+
+  // Timer to update 'now' every minute (and check date change)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const d = new Date();
+      setNow(d);
+      // Ensure dateKey is current (using existing helper)
+      const key = getTodayDateKey();
+      setCurrentDateKey(prev => (prev !== key ? key : prev));
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Accessibility State
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('theme');
@@ -588,6 +604,27 @@ const App = () => {
   const [distance3hTrend, setDistance3hTrend] = useState([]);
   const [weeklyDistance, setWeeklyDistance] = useState([]);
 
+  // Auto-scroll & Glow refs
+  const [highlightedGraph, setHighlightedGraph] = useState(null);
+  const stepsRef = useRef(null);
+  const sleepRef = useRef(null);
+  const distanceRef = useRef(null);
+  const heartRateRef = useRef(null);
+
+  const scrollToGraph = (metric) => {
+    let ref = null;
+    if (metric === 'steps') ref = stepsRef;
+    else if (metric === 'sleep') ref = sleepRef;
+    else if (metric === 'distance') ref = distanceRef;
+    else if (metric === 'heartRate') ref = heartRateRef;
+
+    if (ref && ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedGraph(metric);
+      setTimeout(() => setHighlightedGraph(null), 1500);
+    }
+  };
+
   // Loading flags (unchanged)
   const [isStepsLoading, setIsStepsLoading] = useState(false);
   const [isSleepLoading, setIsSleepLoading] = useState(false);
@@ -668,6 +705,26 @@ const App = () => {
     });
     return () => unsubscribe();
   }, [db, userId, auth]);
+
+  // 1b. Medication Logs Listener (Live Sync for "Taken" status)
+  useEffect(() => {
+    if (!db || !userId) return;
+    const q = query(
+      collection(db, `/artifacts/${appId}/users/${userId}/medication_logs`),
+      where('dateKey', '==', currentDateKey)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const takenSet = new Set();
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.medicationId && data.scheduledTime && data.status === 'taken') {
+          takenSet.add(`${data.medicationId}_${data.scheduledTime}`);
+        }
+      });
+      setTakenMedications(takenSet);
+    }, (e) => console.error("Error fetching logs:", e));
+    return () => unsubscribe();
+  }, [db, userId, currentDateKey]);
 
   // 2. Chat History Listener
   useEffect(() => {
@@ -1776,20 +1833,20 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
       await addDoc(medCollectionRef, medicationData);
 
       // >> NEW: Trigger n8n Webhook for scheduling/confirmation
-      try {
-        fetch('https://AdityaPrakash781-vytalcare-n8n.hf.space/webhook/new-medication', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            medName: newMedication.name,
-            times: validTimes
-          })
-        });
-      } catch (webhookError) {
-        console.warn("Failed to trigger n8n webhook", webhookError);
-        // We do not stop the app flow if the webhook fails, as the local save was successful
-      }
+      // try {
+      //   fetch('https://AdityaPrakash781-vytalcare-n8n.hf.space/webhook/new-medication', {
+      //     method: 'POST',
+      //     headers: { 'Content-Type': 'application/json' },
+      //     body: JSON.stringify({
+      //       userId,
+      //       medName: newMedication.name,
+      //       times: validTimes
+      //     })
+      //   });
+      // } catch (webhookError) {
+      //   console.warn("Failed to trigger n8n webhook", webhookError);
+      //   // We do not stop the app flow if the webhook fails, as the local save was successful
+      // }
 
       setNewMedication({ name: '', dose: '', times: ['08:00'] });
       setIsAdding(false);
@@ -1937,25 +1994,39 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
   );
 
   const renderRemindersTab = () => {
-    // Find next dose
-    const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    let nextDose = null;
-    let minDiff = Infinity;
-
-    todaySchedule.forEach(item => {
-      const [h, m] = item.time.split(':').map(Number);
-      const itemMinutes = h * 60 + m;
-      let diff = itemMinutes - currentMinutes;
-
-      // If it's earlier today, it's passed. We only want future doses for "Next Dose"
-      // Unless we want to show tomorrow's first dose? For now, let's stick to today's remaining.
-      if (diff > 0 && diff < minDiff) {
-        minDiff = diff;
-        nextDose = { ...item, diffMinutes: diff };
+    // Enrich schedule with status
+    const scheduleWithStatus = todaySchedule.map(item => {
+      let h, m;
+      // Robust time parsing (HH:MM or HHMM legacy)
+      if (item.time && item.time.includes(':')) {
+        [h, m] = item.time.split(':').map(Number);
+      } else if (item.time && item.time.length === 4) {
+        h = parseInt(item.time.substring(0, 2), 10);
+        m = parseInt(item.time.substring(2, 4), 10);
+      } else {
+        h = 0; m = 0;
       }
-    });
+      if (isNaN(h)) h = 0;
+      if (isNaN(m)) m = 0;
+
+      const itemMinutes = h * 60 + m;
+      const uniqueKey = `${item.medId}_${item.time}`;
+      const isTaken = takenMedications.has(uniqueKey);
+
+      // "Missed" logic: Not taken AND > 15 mins passed
+      // diffMinutes < -15 means scheduled time was more than 15 mins ago
+      const diffMinutes = itemMinutes - currentMinutes;
+      const isMissed = !isTaken && diffMinutes < -15;
+      const isPast = itemMinutes < currentMinutes;
+
+      return { ...item, itemMinutes, diffMinutes, isTaken, isMissed, isPast, uniqueKey };
+    }).sort((a, b) => a.itemMinutes - b.itemMinutes);
+
+    // Up Next: First item that is NOT taken AND NOT missed
+    // (If it's missed, it stays in timeline with red dot. Up Next moves to future.)
+    const nextDose = scheduleWithStatus.find(item => !item.isTaken && !item.isMissed);
 
     return (
       <div className="space-y-8 p-6 animate-fade-in">
@@ -1984,7 +2055,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
                 <h3 className="text-3xl font-bold">{nextDose.medName}</h3>
                 <p className="text-white/80 mt-1 flex items-center">
                   <span className="bg-white/20 px-2 py-0.5 rounded-lg text-sm mr-2">{nextDose.dose}</span>
-                  at {formatTime(nextDose.time)}
+                  at {formatTimeWithBoth(nextDose.time).time24}
                 </p>
               </div>
               <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
@@ -1993,7 +2064,10 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
             </div>
             <div className="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
               <p className="text-sm font-medium">
-                Due in {Math.floor(nextDose.diffMinutes / 60)}h {nextDose.diffMinutes % 60}m
+                {nextDose.diffMinutes < 0
+                  ? `Due now (${Math.abs(nextDose.diffMinutes)}m ago)`
+                  : `Due in ${Math.floor(nextDose.diffMinutes / 60)}h ${nextDose.diffMinutes % 60}m`
+                }
               </p>
               <button
                 onClick={() => handleMarkAsTaken(nextDose)}
@@ -2017,43 +2091,67 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
 
             {isLoading ? (
               <LoadingSpinner />
-            ) : todaySchedule.length === 0 ? (
+            ) : scheduleWithStatus.length === 0 ? (
               <div className="text-center py-12 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                 <Bell size={48} className="mx-auto mb-3 text-slate-300" />
                 <p className="text-text-muted italic">No medications scheduled for today.</p>
               </div>
             ) : (
-              <div className="relative pl-8 space-y-8 before:content-[''] before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
-                {todaySchedule.sort((a, b) => a.time.localeCompare(b.time)).map((item, idx) => {
-                  const [h, m] = item.time.split(':').map(Number);
-                  const itemMinutes = h * 60 + m;
-                  const isPast = itemMinutes < currentMinutes;
+              <div className="relative pl-8 space-y-8 before:content-[''] before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200 dark:before:bg-slate-700">
+                {scheduleWithStatus.map((item) => {
+                  // Visual Logic
+                  // Taken: Green dot, opacity normal
+                  // Missed: Red dot, opacity normal
+                  // Pending: Primary/Gray dot
+                  let dotColor = 'bg-primary';
+                  if (item.isTaken) dotColor = 'bg-green-500 border-green-500';
+                  else if (item.isMissed) dotColor = 'bg-red-500 border-red-500';
+                  else if (item.isPast) dotColor = 'bg-slate-300 border-slate-300'; // Past but not missed (e.g. < 15m or handled by logic) - actually logic says >15m is missed. 0-15m is overdue (Primary).
 
                   return (
-                    <div key={item.key} className="relative group">
+                    <div key={item.uniqueKey} className="relative group">
                       {/* Timeline Dot */}
-                      <div className={`absolute -left-[39px] top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-4 border-white shadow-sm z-10 ${isPast ? 'bg-slate-300' : 'bg-primary'}`} />
+                      <div className={`absolute -left-[39px] top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-4 border-white dark:border-slate-900 shadow-sm z-10 ${dotColor}`} />
 
-                      <div className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-200 ${isPast ? 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700 opacity-70' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-primary/30'}`}>
+                      <div className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-200 
+                        ${item.isTaken
+                          ? 'bg-green-50 dark:bg-green-900/10 border-green-100 dark:border-green-900/30'
+                          : item.isMissed
+                            ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30'
+                            : item.isPast
+                              ? 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+                              : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-primary/30'
+                        }`}>
                         <div className="flex items-center gap-5">
-                          <div className={`text-xl font-mono font-bold ${isPast ? 'text-slate-400' : 'text-primary'}`}>
+                          <div className={`text-xl font-mono font-bold ${item.isTaken ? 'text-green-600' : item.isMissed ? 'text-red-500' : item.isPast ? 'text-slate-400' : 'text-primary'}`}>
                             {formatTimeWithBoth(item.time).time24}
                             <div className="text-xs font-normal text-text-muted dark:text-slate-400">({formatTimeWithBoth(item.time).time12})</div>
                           </div>
                           <div>
-                            <p className={`text-lg font-bold ${isPast ? 'text-slate-500 dark:text-slate-400' : 'text-text-main dark:text-white'}`}>{item.medName}</p>
+                            <p className={`text-lg font-bold ${item.isTaken ? 'text-green-700 dark:text-green-400' : item.isMissed ? 'text-red-700 dark:text-red-400' : 'text-text-main dark:text-white'}`}>
+                              {item.medName}
+                              {item.isTaken && <span className="ml-2 text-xs bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-100 px-2 py-0.5 rounded-full">Taken</span>}
+                            </p>
                             <p className="text-sm text-text-muted dark:text-slate-400 flex items-center">
-                              <span className={`w-1.5 h-1.5 rounded-full mr-2 ${isPast ? 'bg-slate-300' : 'bg-secondary'}`}></span>
+                              <span className={`w-1.5 h-1.5 rounded-full mr-2 ${item.isTaken ? 'bg-green-400' : 'bg-secondary'}`}></span>
                               {item.dose}
                             </p>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {isPast && <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">Passed</span>}
+                          {!item.isTaken && item.isMissed && (
+                            <button
+                              onClick={() => handleMarkAsTaken(item)}
+                              className="px-3 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                            >
+                              Mark as Taken
+                            </button>
+                          )}
+
                           <button
                             onClick={() => handleDeleteMedication(item.medId)}
-                            className="p-2 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                            className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                             aria-label="Delete medication"
                           >
                             <Trash2 size={18} />
@@ -2140,10 +2238,13 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Steps Card */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 dark:bg-primary/10 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-          <button 
-            onClick={() => setActiveInfoMetric('steps')}
+        <div
+          onClick={() => scrollToGraph('steps')}
+          className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer"
+        >
+          <div className="absolute top-0 right-0 w-24 h-24 bg-[#0F766E]/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('steps'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-primary/70 hover:text-primary"
           >
             <Info size={18} />
@@ -2165,10 +2266,13 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         </div>
 
         {/* Sleep Card */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+        <div
+          onClick={() => scrollToGraph('sleep')}
+          className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer"
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-          <button 
-            onClick={() => setActiveInfoMetric('sleep')}
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('sleep'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-indigo-500/70 hover:text-indigo-500"
           >
             <Info size={18} />
@@ -2194,12 +2298,12 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Calories Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 dark:bg-orange-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-          <button 
-          onClick={() => setActiveInfoMetric('calories')}
-          className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-orange-500/70 hover:text-orange-500"
-        >
-          <Info size={18} />
-        </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('calories'); }}
+            className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-orange-500/70 hover:text-orange-500"
+          >
+            <Info size={18} />
+          </button>
           {calories !== null ? (
             <>
               <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/40 rounded-2xl flex items-center justify-center mb-4 text-orange-600 dark:text-orange-400">
@@ -2221,8 +2325,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Hydration Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-50 dark:bg-cyan-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-          <button 
-            onClick={() => setActiveInfoMetric('hydration')}
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('hydration'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-cyan-500/70 hover:text-cyan-500"
           >
             <Info size={18} />
@@ -2246,14 +2350,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
 
             <div className="flex items-center justify-center gap-3">
               <button
-                onClick={() => updateHydration(-250)}
+                onClick={(e) => { e.stopPropagation(); updateHydration(-250); }}
                 className="p-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                 disabled={hydration <= 0}
               >
                 <Minus size={18} />
               </button>
               <button
-                onClick={() => updateHydration(250)}
+                onClick={(e) => { e.stopPropagation(); updateHydration(250); }}
                 className="flex items-center px-4 py-2 bg-cyan-500 dark:bg-cyan-700/80 text-white rounded-xl font-semibold shadow-md shadow-cyan-200 dark:shadow-cyan-900/20 hover:bg-cyan-600 dark:hover:bg-cyan-600/80 transition-colors"
               >
                 <Plus size={16} className="mr-1" /> 250ml
@@ -2263,11 +2367,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         </div>
 
         {/* Distance Card */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+        <div
+          onClick={() => scrollToGraph('distance')}
+          className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer"
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 dark:bg-blue-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
 
-          <button 
-            onClick={() => setActiveInfoMetric('distance')}
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('distance'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-blue-500/70 hover:text-blue-500"
           >
             <Info size={18} />
@@ -2291,11 +2398,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         </div>
 
         {/* Heart Rate Card */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+        <div
+          onClick={() => scrollToGraph('heartRate')}
+          className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer"
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 dark:bg-red-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
 
-          <button 
-            onClick={() => setActiveInfoMetric('heartRate')}
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('heartRate'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-red-500/70 hover:text-red-500"
           >
             <Info size={18} />
@@ -2371,7 +2481,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+        <div ref={heartRateRef} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 ${highlightedGraph === 'heartRate' ? 'glow-red' : ''}`}>
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Heart size={25} className="mr-2 text-secondary" /> Heart Rate Trend
           </h3>
@@ -2389,7 +2499,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+        <div ref={stepsRef} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 ${highlightedGraph === 'steps' ? 'glow-teal' : ''}`}>
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Footprints size={25} color="#0F766E" className="mr-2 text-secondary" />Steps Trend
           </h3>
@@ -2445,8 +2555,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           </ResponsiveContainer>
 
         </div>
-        <div className="relative bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 
-                hover:shadow-md transition-shadow overflow-hidden">
+        <div ref={distanceRef} className={`relative bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 
+                hover:shadow-md transition-shadow overflow-hidden ${highlightedGraph === 'distance' ? 'glow-blue' : ''}`}>
 
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Ruler size={25} color='#14b8a6' className="mr-2 text-secondary" />Distance Trend
@@ -2495,7 +2605,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+        <div ref={sleepRef} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 ${highlightedGraph === 'sleep' ? 'glow-indigo' : ''}`}>
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Moon size={25} color="#6366F1" className="mr-2 text-secondary" />Sleep Trend</h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -2774,14 +2884,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           </button>
           <div className="flex items-center mb-4">
             <div className="p-3 bg-primary/10 rounded-xl mr-3">
-               <Info className="text-primary" size={24} />
+              <Info className="text-primary" size={24} />
             </div>
             <h3 className="text-xl font-bold text-text-main dark:text-white">{info.title}</h3>
           </div>
           <p className="text-text-muted dark:text-slate-300 leading-relaxed text-sm">
             {info.desc}
           </p>
-          <button 
+          <button
             onClick={() => setActiveInfoMetric(null)}
             className="mt-6 w-full py-3 bg-primary text-white rounded-xl font-semibold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all"
           >
