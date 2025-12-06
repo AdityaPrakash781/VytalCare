@@ -2807,7 +2807,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           <div className="flex items-center mb-4 md:mb-0">
             <div className="w-25 h-25 rounded-xl flex items-center justify-center mr-3">
               <img
-                src="src\assets\iconn.png"
+                src={appIcon}
                 alt="VytalCare Logo"
                 className="w-10 h-10 object-contain"
                 style={{ width: "50px", height: "50px", marginRight: "10px" }}
