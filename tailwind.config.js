@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: ['class', '[data-theme="dark"]'],
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -8,24 +9,31 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#0F766E', // Deep Teal
-          light: '#14B8A6',
-          dark: '#0D5F58',
+          DEFAULT: 'var(--accent)',
+          light: 'var(--accent-light)',
+          dark: 'var(--accent-dark)',
         },
         secondary: {
-          DEFAULT: '#FB7185', // Soft Coral
-          light: '#FDA4AF',
-          dark: '#E11D48',
+          DEFAULT: 'var(--secondary)',
+          light: 'var(--secondary-light)',
+          dark: 'var(--secondary-dark)',
         },
-        background: '#F8FAFC', // Slate 50
-        surface: '#FFFFFF',
+        background: 'var(--bg)',
+        surface: 'var(--surface)',
+        'card-bg': 'var(--card-bg)',
         text: {
-          main: '#1E293B', // Slate 800
-          muted: '#64748B', // Slate 500
-        }
+          main: 'var(--text-primary)',
+          muted: 'var(--text-secondary)',
+        },
+        border: 'var(--border)',
+        muted: 'var(--muted)',
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
+      },
+      boxShadow: {
+        'theme': 'var(--shadow)',
+        'theme-lg': 'var(--shadow-lg)',
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out',
@@ -45,3 +53,4 @@ export default {
   },
   plugins: [],
 }
+

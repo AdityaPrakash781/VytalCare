@@ -11,7 +11,7 @@ import appIcon from "./assets/iconn.png";
 
 
 
-import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints } from 'lucide-react';
+import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints } from 'lucide-react';
 
 /** ---------------------------------------
  * App Config (unchanged)
@@ -58,6 +58,25 @@ const LoadingSpinner = () => (
   </div>
 );
 
+const ColorBlindFilters = () => (
+  <svg style={{ display: 'none' }}>
+    <defs>
+      <filter id="protanopia">
+        <feColorMatrix type="matrix" values="0.567 0.433 0 0 0  0.558 0.442 0 0 0  0 0.242 0.758 0 0  0 0 0 1 0" />
+      </filter>
+      <filter id="deuteranopia">
+        <feColorMatrix type="matrix" values="0.625 0.375 0 0 0  0.7 0.3 0 0 0  0 0.3 0.7 0 0  0 0 0 1 0" />
+      </filter>
+      <filter id="tritanopia">
+        <feColorMatrix type="matrix" values="0.95 0.05 0 0 0  0 0.433 0.567 0 0  0 0.475 0.525 0 0  0 0 0 1 0" />
+      </filter>
+      <filter id="achromatopsia">
+        <feColorMatrix type="matrix" values="0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0.299 0.587 0.114 0 0  0 0 0 1 0" />
+      </filter>
+    </defs>
+  </svg>
+);
+
 const StepCompletionRing = ({ steps, goal, size = 150 }) => {
   const rawPercentage = (steps / goal) * 100;
   const percentage = Math.min(100, Math.round(rawPercentage));
@@ -85,12 +104,44 @@ const StepCompletionRing = ({ steps, goal, size = 150 }) => {
 };
 
 const formatTime = (timeStr) => {
-  if (!timeStr || timeStr.length !== 4) return timeStr;
-  const hours = parseInt(timeStr.substring(0, 2), 10);
-  const minutes = timeStr.substring(2, 4);
+  if (!timeStr) return timeStr;
+  // Handle HH:MM format (5 chars with colon)
+  if (timeStr.length === 5 && timeStr.includes(':')) {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes)) return timeStr;
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+  }
+  // Handle HHMM format (4 chars without colon) - legacy
+  if (timeStr.length === 4) {
+    const hours = parseInt(timeStr.substring(0, 2), 10);
+    const minutes = timeStr.substring(2, 4);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes} ${ampm}`;
+  }
+  return timeStr;
+};
+
+// Format time showing 24hr with 12hr in parentheses
+const formatTimeWithBoth = (timeStr) => {
+  if (!timeStr) return { time24: '', time12: '' };
+  let hours, minutes;
+  if (timeStr.length === 5 && timeStr.includes(':')) {
+    [hours, minutes] = timeStr.split(':').map(Number);
+  } else if (timeStr.length === 4) {
+    hours = parseInt(timeStr.substring(0, 2), 10);
+    minutes = parseInt(timeStr.substring(2, 4), 10);
+  } else {
+    return { time24: timeStr, time12: '' };
+  }
+  if (isNaN(hours) || isNaN(minutes)) return { time24: timeStr, time12: '' };
+  const time24 = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12;
-  return `${displayHours}:${minutes} ${ampm}`;
+  const time12 = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+  return { time24, time12 };
 };
 
 const HealthScoreRing = ({ score, size = 180 }) => {
@@ -124,8 +175,9 @@ const HealthScoreRing = ({ score, size = 180 }) => {
 /** ---------------------------------------
  * Profile Section Component (UPDATED)
  * -------------------------------------- */
-const ProfileSection = ({ db, userId, appId }) => {
+const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [showColorBlindMenu, setShowColorBlindMenu] = useState(false);
   const [profile, setProfile] = useState({
     userName: '',
     userPhone: '',
@@ -182,15 +234,15 @@ const ProfileSection = ({ db, userId, appId }) => {
   if (loading) return <div className="p-4"><LoadingSpinner /></div>;
 
   return (
-    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
-      <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-        <h2 className="text-lg font-bold text-text-main flex items-center">
+    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
+      <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+        <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
           <User size={20} className="mr-2 text-primary" />
           Profile
         </h2>
         <button
           onClick={isEditing ? handleSave : () => setIsEditing(true)}
-          className={`p-2 rounded-xl transition-all duration-200 ${isEditing ? 'bg-green-500 text-white shadow-md shadow-green-200 hover:bg-green-600' : 'bg-white text-slate-400 hover:text-primary hover:bg-primary/5 border border-slate-200'}`}
+          className={`p-2 rounded-xl transition-all duration-200 ${isEditing ? 'bg-green-500 text-white shadow-md shadow-green-200 hover:bg-green-600' : 'bg-white text-slate-400 hover:text-primary hover:bg-primary/5 border border-slate-200 dark:bg-slate-700 dark:border-slate-600'}`}
           title={isEditing ? "Save Profile" : "Edit Profile"}
         >
           {isEditing ? <Save size={18} /> : <Edit2 size={18} />}
@@ -199,7 +251,7 @@ const ProfileSection = ({ db, userId, appId }) => {
 
       <div className="p-6 overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-slate-200">
         <div className="mb-8">
-          <h3 className="text-sm font-bold text-primary mb-4 flex items-center bg-primary/5 p-2 rounded-lg">
+          <h3 className="text-sm font-bold text-primary dark:text-slate-300 mb-4 flex items-center bg-slate-100 dark:bg-slate-800 p-2 rounded-lg dark:border dark:border-slate-700">
             User Details
           </h3>
           <InputField label="Name" name="userName" placeholder="John Doe" isEditing={isEditing} profile={profile} handleChange={handleChange} />
@@ -214,12 +266,91 @@ const ProfileSection = ({ db, userId, appId }) => {
         </div>
 
         <div>
-          <h3 className="text-sm font-bold text-secondary mb-4 flex items-center bg-secondary/5 p-2 rounded-lg">
+          <h3 className="text-sm font-bold text-secondary dark:text-slate-300 mb-4 flex items-center bg-slate-100 dark:bg-slate-800 p-2 rounded-lg dark:border dark:border-slate-700">
             Caregiver Details
           </h3>
           <InputField label="Name" name="caregiverName" placeholder="Jane Doe" isEditing={isEditing} profile={profile} handleChange={handleChange} />
           <InputField label="Phone No" name="caregiverPhone" type="tel" placeholder="+1 987 654 321" isEditing={isEditing} profile={profile} handleChange={handleChange} />
           <InputField label="Email" name="caregiverEmail" type="email" placeholder="jane@example.com" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+        </div>
+
+        <div className="mt-8">
+          <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center bg-slate-100 p-2 rounded-lg dark:bg-slate-800 dark:text-slate-300">
+            Accessibility
+          </h3>
+          <div className="flex gap-2 relative mb-4">
+            <button
+              onClick={() => {
+                setTheme('light');
+                setColorBlindMode('none');
+                setShowColorBlindMenu(false);
+              }}
+              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${theme === 'light' && colorBlindMode === 'none' ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'}`}
+              aria-pressed={theme === 'light' && colorBlindMode === 'none'}
+            >
+              <Sun size={20} />
+              <span className="text-xs font-semibold">Light</span>
+            </button>
+            <button
+              onClick={() => {
+                setTheme('dark');
+                setColorBlindMode('none');
+                setShowColorBlindMenu(false);
+              }}
+              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${theme === 'dark' && colorBlindMode === 'none' ? 'bg-slate-800 text-white border-slate-700 shadow-lg' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'}`}
+              aria-pressed={theme === 'dark' && colorBlindMode === 'none'}
+            >
+              <Moon size={20} />
+              <span className="text-xs font-semibold">Dark</span>
+            </button>
+
+            <button
+              onClick={() => setShowColorBlindMenu(!showColorBlindMenu)}
+              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${colorBlindMode !== 'none' ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : showColorBlindMenu ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'}`}
+              aria-expanded={showColorBlindMenu}
+            >
+              <Eye size={20} />
+              <span className="text-xs font-semibold">Color Blind</span>
+            </button>
+          </div>
+
+          {/* Inline Expandable Menu for Color Blind Options */}
+          {showColorBlindMenu && (
+            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-2 border border-slate-100 dark:border-slate-700 animate-fade-in space-y-1">
+              <button onClick={() => { setColorBlindMode('none'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'none' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+                <span>None</span>
+                {colorBlindMode === 'none' && <CheckCircle size={16} />}
+              </button>
+              <button onClick={() => { setColorBlindMode('protanopia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'protanopia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+                <div>
+                  <span className="block">Protanopia</span>
+                  <span className="text-xs text-slate-400 font-normal">Red-Weak Vision</span>
+                </div>
+                {colorBlindMode === 'protanopia' && <CheckCircle size={16} />}
+              </button>
+              <button onClick={() => { setColorBlindMode('deuteranopia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'deuteranopia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+                <div>
+                  <span className="block">Deuteranopia</span>
+                  <span className="text-xs text-slate-400 font-normal">Green-Weak Vision</span>
+                </div>
+                {colorBlindMode === 'deuteranopia' && <CheckCircle size={16} />}
+              </button>
+              <button onClick={() => { setColorBlindMode('tritanopia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'tritanopia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+                <div>
+                  <span className="block">Tritanopia</span>
+                  <span className="text-xs text-slate-400 font-normal">Blue-Yellow Weak</span>
+                </div>
+                {colorBlindMode === 'tritanopia' && <CheckCircle size={16} />}
+              </button>
+              <button onClick={() => { setColorBlindMode('achromatopsia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'achromatopsia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+                <div>
+                  <span className="block">Greyscale</span>
+                  <span className="text-xs text-slate-400 font-normal">No color perception</span>
+                </div>
+                {colorBlindMode === 'achromatopsia' && <CheckCircle size={16} />}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -228,7 +359,7 @@ const ProfileSection = ({ db, userId, appId }) => {
 
 const InputField = ({ label, name, type = "text", placeholder, isEditing, profile, handleChange }) => (
   <div className="mb-3">
-    <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-wider">{label}</label>
+    <label className="block text-xs font-semibold text-text-muted dark:text-slate-400 mb-1 uppercase tracking-wider">{label}</label>
     {isEditing ? (
       <input
         type={type}
@@ -236,10 +367,10 @@ const InputField = ({ label, name, type = "text", placeholder, isEditing, profil
         value={profile[name]}
         onChange={handleChange}
         placeholder={placeholder}
-        className="w-full p-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-slate-50"
+        className="w-full p-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-slate-50 dark:bg-slate-900 dark:text-white"
       />
     ) : (
-      <p className="text-sm font-medium text-text-main break-words">{profile[name] || <span className="text-slate-300 italic">Not set</span>}</p>
+      <p className="text-sm font-medium text-text-main dark:text-white break-words">{profile[name] || <span className="text-slate-300 italic">Not set</span>}</p>
     )}
   </div>
 );
@@ -248,13 +379,13 @@ const InputField = ({ label, name, type = "text", placeholder, isEditing, profil
  * Auth Login Card (unchanged)
  * -------------------------------------- */
 const LoginPage = ({ handleLogin, error }) => (
-  <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-background">
-    <div className="max-w-md w-full p-8 rounded-3xl shadow-xl bg-surface text-center border border-slate-100 animate-fade-in">
+  <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-background dark:bg-slate-950">
+    <div className="max-w-md w-full p-8 rounded-3xl shadow-xl bg-surface dark:bg-slate-900 text-center border border-slate-100 dark:border-slate-800 animate-fade-in">
       <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
         <Heart className="w-8 h-8 text-primary" />
       </div>
-      <h1 className="text-4xl font-bold mb-3 text-text-main tracking-tight">Health Navigator</h1>
-      <p className="text-lg mb-8 text-text-muted">
+      <h1 className="text-4xl font-bold mb-3 text-text-main dark:text-white tracking-tight">Health Navigator</h1>
+      <p className="text-lg mb-8 text-text-muted dark:text-slate-400">
         Your personal AI health companion. Sign in to manage medications and track your vitals.
       </p>
 
@@ -330,6 +461,64 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('reminders');
+
+  // Accessibility State
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved) return saved;
+    // Default to OS preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+    return 'light';
+  });
+  const [colorBlindMode, setColorBlindMode] = useState(() => localStorage.getItem('colorBlindMode') || 'none');
+
+  // Apply Theme
+  useEffect(() => {
+    // Enable smooth transitions
+    document.documentElement.classList.add('transitioning');
+
+    // Set data-theme attribute
+    document.documentElement.setAttribute('data-theme', theme);
+
+    // Toggle dark class for Tailwind
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+
+    // Save to localStorage
+    localStorage.setItem('theme', theme);
+
+    // Update theme-color meta tag for mobile
+    const themeColor = theme === 'dark' ? '#071027' : '#f7fafc';
+    let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    if (!metaThemeColor) {
+      metaThemeColor = document.createElement('meta');
+      metaThemeColor.name = 'theme-color';
+      document.head.appendChild(metaThemeColor);
+    }
+    metaThemeColor.setAttribute('content', themeColor);
+
+    // Remove transitioning class after animation
+    const timeout = setTimeout(() => {
+      document.documentElement.classList.remove('transitioning');
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [theme]);
+
+  // Apply Color Blind Mode
+  useEffect(() => {
+    if (colorBlindMode && colorBlindMode !== 'none') {
+      document.documentElement.style.filter = `url(#${colorBlindMode})`;
+    } else {
+      document.documentElement.style.filter = 'none';
+    }
+    localStorage.setItem('colorBlindMode', colorBlindMode);
+  }, [colorBlindMode]);
 
   // Chatbot
   // >> INITIAL CHAT HISTORY IS NOW A WELCOME MESSAGE ONLY <<
@@ -1539,7 +1728,6 @@ You are a helpful and professional Health Navigator chatbot.
     const validTimes = newMedication.times
       .map(t => t.trim())
       .filter(t => t.match(/^\d{2}:\d{2}$/))
-      .map(t => t.replace(':', ''))
       .sort();
     if (validTimes.length === 0) { setError('Use the time picker to select valid times.'); return; }
 
@@ -1653,21 +1841,48 @@ You are a helpful and professional Health Navigator chatbot.
       <div>
         <label className="block text-sm font-medium mb-2 text-text-muted">Daily Schedule Times</label>
         <div className="flex flex-wrap gap-3 items-center">
-          {newMedication.times.map((time, index) => (
-            <div key={`time-input-${index}`} className="flex items-center space-x-2 bg-slate-50 p-1.5 rounded-lg border border-slate-200">
-              <input
-                type="time" value={time} onChange={(e) => handleTimeChange(index, e.target.value)}
-                className="w-24 p-1.5 bg-white border border-slate-200 rounded-md text-center text-sm focus:outline-none focus:border-primary"
-              />
-              <button
-                onClick={() => handleRemoveTime(index)}
-                className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
-                aria-label="Remove time"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ))}
+          {newMedication.times.map((time, index) => {
+            // Convert 24hr time to 12hr format for display
+            const get12HrFormat = (t) => {
+              if (!t || t.length < 5) return '';
+              const [h, m] = t.split(':').map(Number);
+              if (isNaN(h) || isNaN(m)) return '';
+              const ampm = h >= 12 ? 'PM' : 'AM';
+              const hr12 = h % 12 || 12;
+              return `${hr12}:${m.toString().padStart(2, '0')} ${ampm}`;
+            };
+            return (
+              <div key={`time-input-${index}`} className="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                <input
+                  type="text"
+                  value={time}
+                  onChange={(e) => {
+                    let val = e.target.value.replace(/[^0-9:]/g, '');
+                    // Auto-insert colon after 2 digits
+                    if (val.length === 2 && !val.includes(':')) {
+                      val = val + ':';
+                    }
+                    // Limit to HH:MM format
+                    if (val.length <= 5) {
+                      handleTimeChange(index, val);
+                    }
+                  }}
+                  placeholder="HH:MM"
+                  maxLength={5}
+                  pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+                  className="w-16 p-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-center text-sm focus:outline-none focus:border-primary dark:text-white font-mono"
+                />
+                {time && time.length === 5 && <span className="text-xs text-text-muted dark:text-slate-400">({get12HrFormat(time)})</span>}
+                <button
+                  onClick={() => handleRemoveTime(index)}
+                  className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors"
+                  aria-label="Remove time"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            );
+          })}
           <button
             onClick={handleAddTime}
             className="flex items-center px-3 py-2 rounded-lg border border-dashed border-primary/40 text-primary text-sm font-medium hover:bg-primary/5 transition-colors"
@@ -1711,8 +1926,8 @@ You are a helpful and professional Health Navigator chatbot.
 
     return (
       <div className="space-y-8 p-6 animate-fade-in">
-        <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-          <h2 className="text-2xl font-bold text-text-main flex items-center">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-700">
+          <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
             <Bell size={28} className="mr-3 text-primary" />
             Medication Reminders
           </h2>
@@ -1760,7 +1975,7 @@ You are a helpful and professional Health Navigator chatbot.
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Timeline Column */}
           <div className="lg:col-span-2 space-y-6">
-            <h3 className="text-lg font-bold flex items-center text-text-main">
+            <h3 className="text-lg font-bold flex items-center text-text-main dark:text-white">
               <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center mr-3 text-primary">
                 <Calendar size={18} />
               </div>
@@ -1770,7 +1985,7 @@ You are a helpful and professional Health Navigator chatbot.
             {isLoading ? (
               <LoadingSpinner />
             ) : todaySchedule.length === 0 ? (
-              <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              <div className="text-center py-12 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                 <Bell size={48} className="mx-auto mb-3 text-slate-300" />
                 <p className="text-text-muted italic">No medications scheduled for today.</p>
               </div>
@@ -1786,14 +2001,15 @@ You are a helpful and professional Health Navigator chatbot.
                       {/* Timeline Dot */}
                       <div className={`absolute -left-[39px] top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-4 border-white shadow-sm z-10 ${isPast ? 'bg-slate-300' : 'bg-primary'}`} />
 
-                      <div className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-200 ${isPast ? 'bg-slate-50 border-slate-100 opacity-70' : 'bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-primary/30'}`}>
+                      <div className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-200 ${isPast ? 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700 opacity-70' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-primary/30'}`}>
                         <div className="flex items-center gap-5">
                           <div className={`text-xl font-mono font-bold ${isPast ? 'text-slate-400' : 'text-primary'}`}>
-                            {formatTime(item.time)}
+                            {formatTimeWithBoth(item.time).time24}
+                            <div className="text-xs font-normal text-text-muted dark:text-slate-400">({formatTimeWithBoth(item.time).time12})</div>
                           </div>
                           <div>
-                            <p className={`text-lg font-bold ${isPast ? 'text-slate-500' : 'text-text-main'}`}>{item.medName}</p>
-                            <p className="text-sm text-text-muted flex items-center">
+                            <p className={`text-lg font-bold ${isPast ? 'text-slate-500 dark:text-slate-400' : 'text-text-main dark:text-white'}`}>{item.medName}</p>
+                            <p className="text-sm text-text-muted dark:text-slate-400 flex items-center">
                               <span className={`w-1.5 h-1.5 rounded-full mr-2 ${isPast ? 'bg-slate-300' : 'bg-secondary'}`}></span>
                               {item.dose}
                             </p>
@@ -1820,15 +2036,15 @@ You are a helpful and professional Health Navigator chatbot.
 
           {/* All Medications Sidebar */}
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-text-main">All Prescriptions</h3>
+            <h3 className="text-lg font-bold text-text-main dark:text-white">All Prescriptions</h3>
             {medications.length === 0 ? (
               <p className="text-text-muted italic text-sm">You have no saved medications.</p>
             ) : (
               <div className="space-y-3">
                 {medications.map(med => (
-                  <div key={med.id} className="p-4 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-primary/30 transition-colors group">
+                  <div key={med.id} className="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-primary/30 transition-colors group">
                     <div className="flex justify-between items-start mb-2">
-                      <p className="font-bold text-text-main">{med.name}</p>
+                      <p className="font-bold text-text-main dark:text-white">{med.name}</p>
                       <button
                         onClick={() => handleDeleteMedication(med.id)}
                         className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
@@ -1836,11 +2052,12 @@ You are a helpful and professional Health Navigator chatbot.
                         <Trash2 size={14} />
                       </button>
                     </div>
-                    <p className="text-xs text-text-muted mb-2">{med.dose}</p>
+                    <p className="text-xs text-text-muted dark:text-slate-400 mb-2">{med.dose}</p>
                     <div className="flex flex-wrap gap-1">
                       {med.times.map(t => (
-                        <span key={t} className="text-[10px] bg-slate-50 text-text-muted px-1.5 py-0.5 rounded border border-slate-100 font-mono">
-                          {formatTime(t)}
+                        <span key={t} className="text-[10px] bg-slate-50 dark:bg-slate-700 text-text-muted dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-600 font-mono flex flex-col items-center">
+                          <span>{formatTimeWithBoth(t).time24}</span>
+                          <span className="text-[8px] opacity-70">({formatTimeWithBoth(t).time12})</span>
                         </span>
                       ))}
                     </div>
@@ -1856,8 +2073,8 @@ You are a helpful and professional Health Navigator chatbot.
 
   const renderActivityTab = () => (
     <div className="p-6 space-y-8 animate-fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 pb-4">
-        <h2 className="text-2xl font-bold text-text-main flex items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 dark:border-slate-700 pb-4">
+        <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
           <Activity size={28} className="mr-3 text-primary" />
           Activity Dashboard
         </h2>
@@ -1890,14 +2107,14 @@ You are a helpful and professional Health Navigator chatbot.
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Steps Card */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 dark:bg-primary/10 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
           {stepCount !== null ? (
             <>
               <StepCompletionRing steps={stepCount} goal={DAILY_STEP_GOAL} size={160} />
               <div className="mt-2 text-center z-10">
-                <p className="text-3xl font-bold text-text-main">{stepCount.toLocaleString()}</p>
-                <p className="text-sm text-text-muted font-medium">Steps Today</p>
+                <p className="text-3xl font-bold text-text-main dark:text-white">{stepCount.toLocaleString()}</p>
+                <p className="text-sm text-text-muted dark:text-slate-400 font-medium">Steps Today</p>
               </div>
             </>
           ) : (
@@ -1909,16 +2126,16 @@ You are a helpful and professional Health Navigator chatbot.
         </div>
 
         {/* Sleep Card */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
           {sleepHours !== null ? (
             <>
-              <div className={`w-32 h-32 rounded-full flex items-center justify-center border-4 mb-4 ${sleepHours < RECOMMENDED_SLEEP_HOURS ? 'border-secondary/30 bg-secondary/5' : 'border-green-100 bg-green-50'}`}>
+              <div className={`w-32 h-32 rounded-full flex items-center justify-center border-4 mb-4 ${sleepHours < RECOMMENDED_SLEEP_HOURS ? 'border-secondary/30 bg-secondary/5 dark:bg-secondary/10' : 'border-green-100 dark:border-green-900/50 bg-green-50 dark:bg-green-900/20'}`}>
                 <Moon size={32} className={sleepHours < RECOMMENDED_SLEEP_HOURS ? 'text-secondary' : 'text-green-600'} />
               </div>
               <div className="text-center z-10">
-                <p className="text-4xl font-bold text-text-main">{sleepHours}<span className="text-xl text-text-muted ml-1">h</span></p>
-                <p className="text-sm text-text-muted font-medium">Sleep Duration</p>
+                <p className="text-4xl font-bold text-text-main dark:text-white">{sleepHours}<span className="text-xl text-text-muted dark:text-slate-400 ml-1">h</span></p>
+                <p className="text-sm text-text-muted dark:text-slate-400 font-medium">Sleep Duration</p>
               </div>
             </>
           ) : (
@@ -1930,16 +2147,16 @@ You are a helpful and professional Health Navigator chatbot.
         </div>
 
         {/* Calories Card */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 dark:bg-orange-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
           {calories !== null ? (
             <>
-              <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mb-4 text-orange-600">
+              <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/40 rounded-2xl flex items-center justify-center mb-4 text-orange-600 dark:text-orange-400">
                 <Activity size={32} />
               </div>
               <div className="text-center z-10">
-                <p className="text-4xl font-bold text-text-main">{calories}</p>
-                <p className="text-sm text-text-muted font-medium">Calories Burned</p>
+                <p className="text-4xl font-bold text-text-main dark:text-white">{calories}</p>
+                <p className="text-sm text-text-muted dark:text-slate-400 font-medium">Calories Burned</p>
               </div>
             </>
           ) : (
@@ -1951,16 +2168,16 @@ You are a helpful and professional Health Navigator chatbot.
 
 
         {/* Hydration Card */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-50 dark:bg-cyan-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
 
-          <div className="w-16 h-16 bg-cyan-100 rounded-2xl flex items-center justify-center mb-4 text-cyan-600">
+          <div className="w-16 h-16 bg-cyan-100 dark:bg-cyan-900/40 rounded-2xl flex items-center justify-center mb-4 text-cyan-600 dark:text-cyan-400">
             <Droplet size={32} fill="currentColor" />
           </div>
 
           <div className="text-center z-10 w-full">
-            <p className="text-4xl font-bold text-text-main">{hydration}<span className="text-xl text-text-muted ml-1">ml</span></p>
-            <p className="text-sm text-text-muted font-medium mb-4">Water Intake</p>
+            <p className="text-4xl font-bold text-text-main dark:text-white">{hydration}<span className="text-xl text-text-muted dark:text-slate-400 ml-1">ml</span></p>
+            <p className="text-sm text-text-muted dark:text-slate-400 font-medium mb-4">Water Intake</p>
 
             {/* Progress Bar */}
             <div className="w-full bg-slate-100 rounded-full h-2.5 mb-4 overflow-hidden">
@@ -1973,14 +2190,14 @@ You are a helpful and professional Health Navigator chatbot.
             <div className="flex items-center justify-center gap-3">
               <button
                 onClick={() => updateHydration(-250)}
-                className="p-2 rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                 disabled={hydration <= 0}
               >
                 <Minus size={18} />
               </button>
               <button
                 onClick={() => updateHydration(250)}
-                className="flex items-center px-4 py-2 bg-cyan-500 text-white rounded-xl font-semibold shadow-md shadow-cyan-200 hover:bg-cyan-600 transition-colors"
+                className="flex items-center px-4 py-2 bg-cyan-500 dark:bg-cyan-700/80 text-white rounded-xl font-semibold shadow-md shadow-cyan-200 dark:shadow-cyan-900/20 hover:bg-cyan-600 dark:hover:bg-cyan-600/80 transition-colors"
               >
                 <Plus size={16} className="mr-1" /> 250ml
               </button>
@@ -1989,16 +2206,16 @@ You are a helpful and professional Health Navigator chatbot.
         </div>
 
         {/* Distance Card */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 dark:bg-blue-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
           {distance !== null ? (
             <>
-              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-4 text-blue-600">
+              <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/40 rounded-2xl flex items-center justify-center mb-4 text-blue-600 dark:text-blue-400">
                 <Activity size={32} />
               </div>
               <div className="text-center z-10">
-                <p className="text-4xl font-bold text-text-main">{distance}<span className="text-xl text-text-muted ml-1">km</span></p>
-                <p className="text-sm text-text-muted font-medium">Distance</p>
+                <p className="text-4xl font-bold text-text-main dark:text-white">{distance}<span className="text-xl text-text-muted dark:text-slate-400 ml-1">km</span></p>
+                <p className="text-sm text-text-muted dark:text-slate-400 font-medium">Distance</p>
               </div>
             </>
           ) : (
@@ -2009,16 +2226,16 @@ You are a helpful and professional Health Navigator chatbot.
         </div>
 
         {/* Heart Rate Card */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 dark:bg-red-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
           {heartRate !== null ? (
             <>
-              <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mb-4 text-red-600 animate-pulse">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/40 rounded-2xl flex items-center justify-center mb-4 text-red-600 dark:text-red-400 animate-pulse">
                 <Heart size={32} fill="currentColor" />
               </div>
               <div className="text-center z-10">
-                <p className="text-4xl font-bold text-text-main">{heartRate}<span className="text-xl text-text-muted ml-1">bpm</span></p>
-                <p className="text-sm text-text-muted font-medium">Heart Rate</p>
+                <p className="text-4xl font-bold text-text-main dark:text-white">{heartRate}<span className="text-xl text-text-muted dark:text-slate-400 ml-1">bpm</span></p>
+                <p className="text-sm text-text-muted dark:text-slate-400 font-medium">Heart Rate</p>
               </div>
             </>
           ) : (
@@ -2030,7 +2247,7 @@ You are a helpful and professional Health Navigator chatbot.
         </div>
       </div>
       {/* Health Score Card */}
-      <div className="bg-white p-10 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md
+      <div className="bg-white dark:bg-slate-800 p-10 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md
      transition-shadow w-full flex justify-center">
 
         {/* CENTERED ROW WRAPPER */}
@@ -2047,8 +2264,8 @@ You are a helpful and professional Health Navigator chatbot.
             {/* WHY THIS SCORE */}
             {healthScoreExplanation.length > 0 && (
               <div>
-                <p className="font-semibold text-text-main text-lg mb-2">Why this score:</p>
-                <ul className="space-y-1 text-text-muted text-sm">
+                <p className="font-semibold text-text-main dark:text-white text-lg mb-2">Why this score:</p>
+                <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
                   {healthScoreExplanation.map((line, idx) => (
                     <li key={idx} className="flex items-start gap-2">
                       <span className="text-lg">•</span>
@@ -2062,8 +2279,8 @@ You are a helpful and professional Health Navigator chatbot.
             {/* HOW TO IMPROVE */}
             {healthScoreSuggestions.length > 0 && (
               <div>
-                <p className="font-semibold text-text-main text-lg mb-2">How to improve:</p>
-                <ul className="space-y-1 text-text-muted text-sm">
+                <p className="font-semibold text-text-main dark:text-white text-lg mb-2">How to improve:</p>
+                <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
                   {healthScoreSuggestions.map((line, idx) => (
                     <li key={idx} className="flex items-start gap-2">
                       <span className="text-lg">•</span>
@@ -2081,8 +2298,8 @@ You are a helpful and professional Health Navigator chatbot.
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold text-text-main mb-6 flex items-center">
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+          <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Heart size={25} className="mr-2 text-secondary" /> Heart Rate Trend
           </h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -2099,8 +2316,8 @@ You are a helpful and professional Health Navigator chatbot.
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold text-text-main mb-6 flex items-center">
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+          <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Footprints size={25} color="#0F766E" className="mr-2 text-secondary" />Steps Trend
           </h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -2155,10 +2372,10 @@ You are a helpful and professional Health Navigator chatbot.
           </ResponsiveContainer>
 
         </div>
-        <div className="relative bg-white p-6 rounded-3xl shadow-sm border border-slate-100 
+        <div className="relative bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 
                 hover:shadow-md transition-shadow overflow-hidden">
 
-          <h3 className="text-lg font-bold text-text-main mb-6 flex items-center">
+          <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Ruler size={25} color='#14b8a6' className="mr-2 text-secondary" />Distance Trend
           </h3>
 
@@ -2205,8 +2422,8 @@ You are a helpful and professional Health Navigator chatbot.
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold text-text-main mb-6 flex items-center">
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+          <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Moon size={25} color="#6366F1" className="mr-2 text-secondary" />Sleep Trend</h3>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={sleepTrend}>
@@ -2246,7 +2463,7 @@ You are a helpful and professional Health Navigator chatbot.
       {/* AI Assessment Report */}
       {
         (isAssessmentLoading || assessmentResult) && (
-          <div className="mt-8 bg-white p-8 rounded-3xl shadow-lg border border-slate-100 animate-slide-up">
+          <div className="mt-8 bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 animate-slide-up">
             <h3 className="text-2xl font-bold flex items-center mb-6 text-text-main">
               <div className="w-10 h-10 bg-secondary/10 rounded-xl flex items-center justify-center mr-3">
                 <MessageSquare size={20} className="text-secondary" />
@@ -2317,8 +2534,8 @@ You are a helpful and professional Health Navigator chatbot.
 
     return (
       <div className="flex flex-col h-[70vh] p-6 animate-fade-in">
-        <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
-          <h2 className="text-2xl font-bold text-text-main flex items-center">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-700 mb-4">
+          <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
             <MessageSquare size={28} className="mr-3 text-primary" />
             Health Chatbot
           </h2>
@@ -2344,7 +2561,7 @@ You are a helpful and professional Health Navigator chatbot.
                 <div
                   className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${msg.role === 'user'
                     ? 'bg-primary text-white rounded-tr-none'
-                    : 'bg-slate-50 text-text-main border border-slate-100 rounded-tl-none'
+                    : 'bg-slate-50 dark:bg-slate-800 text-text-main dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-none'
                     }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.text}</p>
@@ -2389,7 +2606,7 @@ You are a helpful and professional Health Navigator chatbot.
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             placeholder="Ask a health question."
-            className="w-full p-4 pr-32 border border-slate-200 rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 focus:bg-white shadow-sm"
+            className="w-full p-4 pr-32 border border-slate-200 dark:border-slate-700 rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-900 dark:text-white shadow-sm"
           />
           <button
             type="submit"
@@ -2414,12 +2631,12 @@ You are a helpful and professional Health Navigator chatbot.
   const renderEmergencyTab = () => (
     <div className="p-6 animate-fade-in">
       <div className="flex items-center mb-6">
-        <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center mr-4">
-          <AlertCircle className="w-6 h-6 text-red-600" />
+        <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center mr-4">
+          <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-text-main">Emergency Contacts</h2>
-          <p className="text-text-muted">Quick access to emergency services</p>
+          <h2 className="text-2xl font-bold text-text-main dark:text-white">Emergency Contacts</h2>
+          <p className="text-text-muted dark:text-slate-400">Quick access to emergency services</p>
         </div>
       </div>
 
@@ -2428,15 +2645,15 @@ You are a helpful and professional Health Navigator chatbot.
           { label: 'Personal Emergency', number: '+919353305251' },
           { label: 'Ambulance Service', number: '108' }
         ].map((contact, idx) => (
-          <div key={idx} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div key={idx} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-text-muted mb-1">{contact.label}</p>
-              <p className="text-xl font-bold text-text-main tracking-wide">{contact.number}</p>
+              <p className="text-sm font-medium text-text-muted dark:text-slate-400 mb-1">{contact.label}</p>
+              <p className="text-xl font-bold text-text-main dark:text-white tracking-wide">{contact.number}</p>
             </div>
             <div className="flex gap-3">
               <a
                 href={`tel:${contact.number}`}
-                className="flex-1 sm:flex-none px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-200"
+                className="flex-1 sm:flex-none px-6 py-3 bg-green-500 dark:bg-green-700/80 hover:bg-green-600 dark:hover:bg-green-600/80 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-200 dark:shadow-green-900/20"
               >
                 <Phone size={18} />
                 Call
@@ -2446,7 +2663,7 @@ You are a helpful and professional Health Navigator chatbot.
                   navigator.clipboard.writeText(contact.number);
                   alert(`Copied ${contact.number} to clipboard`);
                 }}
-                className="flex-1 sm:flex-none px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+                className="flex-1 sm:flex-none px-6 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
               >
                 <Copy size={18} />
                 Copy
@@ -2477,10 +2694,11 @@ You are a helpful and professional Health Navigator chatbot.
   if (!googleAccessToken) return <LoginPage handleLogin={handleLogin} error={error} />;
 
   return (
-    <div className="min-h-screen p-4 sm:p-8 bg-background text-text-main font-sans">
+    <div className="min-h-screen p-4 sm:p-8 bg-background dark:bg-slate-950 text-text-main dark:text-slate-100 font-sans">
+      <ColorBlindFilters />
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-6 border-b border-slate-200">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-6 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center mb-4 md:mb-0">
             <div className="w-25 h-25 rounded-xl flex items-center justify-center mr-3">
               <img
@@ -2491,7 +2709,7 @@ You are a helpful and professional Health Navigator chatbot.
               />
             </div>
 
-            <h1 className="text-3xl font-bold text-text-main tracking-tight"
+            <h1 className="text-3xl font-bold text-text-main dark:text-white tracking-tight"
               style={{ marginLeft: "-15px" }}>
               VytalCare
 
@@ -2500,7 +2718,7 @@ You are a helpful and professional Health Navigator chatbot.
 
           </div>
 
-          <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex bg-white dark:bg-slate-800 p-1.5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
             {[
               { id: 'reminders', icon: Bell, label: 'Reminders' },
               { id: 'activity', icon: Activity, label: 'Activity' },
@@ -2511,7 +2729,7 @@ You are a helpful and professional Health Navigator chatbot.
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center px-5 py-2.5 rounded-xl font-medium transition-all duration-200 ${activeTab === tab.id
                   ? 'bg-primary text-white shadow-md shadow-primary/20'
-                  : 'text-text-muted hover:bg-slate-50 hover:text-text-main'
+                  : 'text-text-muted dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/30 hover:text-text-main dark:hover:text-slate-200'
                   }`}
               >
                 <tab.icon size={18} className="mr-2" />
@@ -2520,8 +2738,8 @@ You are a helpful and professional Health Navigator chatbot.
             ))}
           </div>
           <button
-            className="mt-2 px-5 py-2.5 bg-red-500 text-white font-semibold rounded-xl shadow-md shadow-red-300 
-        hover:bg-red-400 transition-all duration-200 flex items-center gap-2
+            className="mt-2 px-5 py-2.5 bg-red-500 dark:bg-red-800/80 text-white font-semibold rounded-xl shadow-md shadow-red-300 dark:shadow-red-900/30
+        hover:bg-red-400 dark:hover:bg-red-700/80 transition-all duration-200 flex items-center gap-2
         "
             onClick={() => setActiveTab('emergency')}
           >
@@ -2534,11 +2752,19 @@ You are a helpful and professional Health Navigator chatbot.
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           {/* Left Sidebar - Profile */}
           <div className="w-full lg:w-80 flex-shrink-0 h-auto">
-            <ProfileSection db={db} userId={userId} appId={appId} />
+            <ProfileSection
+              db={db}
+              userId={userId}
+              appId={appId}
+              theme={theme}
+              setTheme={setTheme}
+              colorBlindMode={colorBlindMode}
+              setColorBlindMode={setColorBlindMode}
+            />
           </div>
 
           {/* Main Content */}
-          <div className="flex-grow bg-surface rounded-3xl shadow-xl shadow-slate-200/50 min-h-[60vh] border border-slate-100 overflow-hidden">
+          <div className="flex-grow bg-surface dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none min-h-[60vh] border border-slate-100 dark:border-slate-800 overflow-hidden">
             {activeTab === 'reminders' && renderRemindersTab()}
             {activeTab === 'activity' && renderActivityTab()}
             {activeTab === 'chatbot' && renderChatbotTab()}
