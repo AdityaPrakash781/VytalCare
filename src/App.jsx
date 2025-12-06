@@ -11,7 +11,7 @@ import appIcon from "./assets/iconn.png";
 
 
 
-import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info } from 'lucide-react';
+import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info, Mic, MicOff, Volume2, VolumeX, Globe, Paperclip } from 'lucide-react';
 
 /** ---------------------------------------
  * App Config (unchanged)
@@ -382,12 +382,12 @@ const LoginPage = ({ handleLogin, error }) => (
   <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-background dark:bg-slate-950">
     <div className="max-w-md w-full p-8 rounded-3xl shadow-xl bg-surface dark:bg-slate-900 text-center border border-slate-100 dark:border-slate-800 animate-fade-in">
       <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700">
-      <img 
-        src={appIcon} 
-        alt="VytalCare Logo" 
-        className="w-full h-full object-contain" 
-      />
-    </div>
+        <img
+          src={appIcon}
+          alt="VytalCare Logo"
+          className="w-full h-full object-contain"
+        />
+      </div>
       <h1 className="text-4xl font-bold mb-3 text-text-main dark:text-white tracking-tight">VytalCare</h1>
       <p className="text-lg mb-8 text-text-muted dark:text-slate-400">
         Your personal AI health companion. Sign in to manage medications and track your vitals.
@@ -495,6 +495,22 @@ const App = () => {
   //For Metric Description
   const [activeInfoMetric, setActiveInfoMetric] = useState(null);
 
+  // >> NEW: State for "Taken" Tracking and Time <<
+  const [takenMedications, setTakenMedications] = useState(new Set());
+  const [now, setNow] = useState(new Date());
+
+  // Timer to update 'now' every minute (and check date change)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const d = new Date();
+      setNow(d);
+      // Ensure dateKey is current (using existing helper)
+      const key = getTodayDateKey();
+      setCurrentDateKey(prev => (prev !== key ? key : prev));
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Accessibility State
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('theme');
@@ -558,6 +574,8 @@ const App = () => {
   const [chatHistory, setChatHistory] = useState([INITIAL_CHAT_WELCOME]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [attachedImage, setAttachedImage] = useState(null); // NEW: image attached to next message
+  const [showAttachMenu, setShowAttachMenu] = useState(false); // NEW: show upload / camera choice
 
   // Google Fit auth token (unchanged)
   const [googleAccessToken, setGoogleAccessToken] = useState(null);
@@ -587,6 +605,27 @@ const App = () => {
   const [steps3hTrend, setSteps3hTrend] = useState([]);
   const [distance3hTrend, setDistance3hTrend] = useState([]);
   const [weeklyDistance, setWeeklyDistance] = useState([]);
+
+  // Auto-scroll & Glow refs
+  const [highlightedGraph, setHighlightedGraph] = useState(null);
+  const stepsRef = useRef(null);
+  const sleepRef = useRef(null);
+  const distanceRef = useRef(null);
+  const heartRateRef = useRef(null);
+
+  const scrollToGraph = (metric) => {
+    let ref = null;
+    if (metric === 'steps') ref = stepsRef;
+    else if (metric === 'sleep') ref = sleepRef;
+    else if (metric === 'distance') ref = distanceRef;
+    else if (metric === 'heartRate') ref = heartRateRef;
+
+    if (ref && ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedGraph(metric);
+      setTimeout(() => setHighlightedGraph(null), 1500);
+    }
+  };
 
   // Loading flags (unchanged)
   const [isStepsLoading, setIsStepsLoading] = useState(false);
@@ -669,11 +708,36 @@ const App = () => {
     return () => unsubscribe();
   }, [db, userId, auth]);
 
+  // 1b. Medication Logs Listener (Live Sync for "Taken" status)
+  useEffect(() => {
+    if (!db || !userId) return;
+    const q = query(
+      collection(db, `/artifacts/${appId}/users/${userId}/medication_logs`),
+      where('dateKey', '==', currentDateKey)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const takenSet = new Set();
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.medicationId && data.scheduledTime && data.status === 'taken') {
+          takenSet.add(`${data.medicationId}_${data.scheduledTime}`);
+        }
+      });
+      setTakenMedications(takenSet);
+    }, (e) => console.error("Error fetching logs:", e));
+    return () => unsubscribe();
+  }, [db, userId, currentDateKey]);
+
   // 2. Chat History Listener
   useEffect(() => {
     if (!db || !userId) return;
     const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-    const qChat = query(chatCollectionRef, orderBy('createdAt', 'asc'), limit(100));
+    // Filter messages created after the last clear time
+    const qChat = query(
+      chatCollectionRef,
+      orderBy('createdAt', 'asc'),
+      limit(100)
+    );
 
     const unsubscribe = onSnapshot(qChat, (snapshot) => {
       const chatMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -689,6 +753,162 @@ const App = () => {
 
     return () => unsubscribe();
   }, [db, userId, auth]);
+
+  // >> VOICE FEATURES <<
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(false); // New: Continuous Voice Mode
+  const [selectedLanguage, setSelectedLanguage] = useState('en-US');
+  const recognitionRef = useRef(null);
+
+  // Supported Languages (Updated with Indian Languages)
+  const LANGUAGES = [
+    { code: 'en-US', name: 'English (US)', voice: 'Google US English' },
+    { code: 'en-IN', name: 'English (India)', voice: 'Google UK English Female' }, // Fallback to UK if IN not found
+    { code: 'hi-IN', name: 'Hindi', voice: 'Google हिन्दी' },
+    { code: 'ta-IN', name: 'Tamil', voice: 'Google தமிழ்' },
+    { code: 'kn-IN', name: 'Kannada', voice: 'Google ಕನ್ನಡ' },
+    { code: 'te-IN', name: 'Telugu', voice: 'Google తెలుగు' },
+  ];
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setChatInput(transcript);
+        setIsListening(false);
+
+        // If in Voice Mode, automatically send the message
+        if (isVoiceMode) {
+          // We need to trigger the send logic. 
+          // Since callChatbotAPI is a function, we can call it directly.
+          // However, we need to ensure chatInput state is updated first.
+          // Actually, using the transcript directly is safer here to avoid state race conditions.
+          callChatbotAPI(transcript);
+          setChatInput(''); // Clear input after sending
+        }
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error("Speech recognition error", event.error);
+        setIsListening(false);
+        // In voice mode, if error is 'no-speech', maybe restart? 
+        // For now, let's stop to avoid infinite error loops.
+        if (isVoiceMode && event.error === 'no-speech') {
+          // Optional: restart listening?
+          // setIsListening(true); recognitionRef.current.start();
+        }
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  }, [isVoiceMode]); // Re-bind if voice mode changes (though refs usually stable)
+
+  // Update language for recognition
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = selectedLanguage;
+    }
+  }, [selectedLanguage]);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      setIsVoiceMode(false); // Stop voice mode if manually stopped
+    } else {
+      recognitionRef.current?.start();
+      setIsListening(true);
+    }
+  };
+
+  const startVoiceMode = () => {
+    setIsVoiceMode(true);
+    setSpeechEnabled(true); // Force enable TTS for voice mode
+    recognitionRef.current?.start();
+    setIsListening(true);
+  };
+
+  const stopVoiceMode = () => {
+    setIsVoiceMode(false);
+    recognitionRef.current?.stop();
+    window.speechSynthesis.cancel();
+    setIsListening(false);
+    setIsSpeaking(false);
+  };
+
+  const speakText = (text) => {
+    if ((!speechEnabled && !isVoiceMode) || !text) return;
+
+    // Cancel current speech
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = selectedLanguage;
+
+    // Try to find a matching voice - Prioritize "Natural" or "Google"
+    const voices = window.speechSynthesis.getVoices();
+    const langConfig = LANGUAGES.find(l => l.code === selectedLanguage);
+
+    let voice = null;
+    if (langConfig) {
+      // 1. Try specific voice name from config
+      voice = voices.find(v => v.name.includes(langConfig.voice));
+      // 2. Try any voice for the language
+      if (!voice) voice = voices.find(v => v.lang === selectedLanguage);
+    }
+    if (voice) utterance.voice = voice;
+
+    utterance.onstart = () => setIsSpeaking(true);
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      // Continuous Loop: If in Voice Mode, start listening again after speaking
+      if (isVoiceMode) {
+        setTimeout(() => {
+          recognitionRef.current?.start();
+          setIsListening(true);
+        }, 500); // Small delay for natural pause
+      }
+    };
+
+    utterance.onerror = (event) => {
+      console.error("Speech synthesis error", event);
+      setIsSpeaking(false);
+      // Even on error, try to continue the loop if in voice mode
+      if (isVoiceMode) {
+        setTimeout(() => {
+          recognitionRef.current?.start();
+          setIsListening(true);
+        }, 1000);
+      }
+    };
+
+
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  };
+
+  // Stop speaking on unmount
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
 
   // 3. Hydration Listener
@@ -1582,25 +1802,41 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
   /** ---------------------------------------
    * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE
    * -------------------------------------- */
-  const callChatbotAPI = useCallback(async (newMessage) => {
-    const apiKey = isLocalRun ? GEMINI_API_KEY : "";
-    if (!apiKey) {
-      setError("GEMINI API ERROR: Missing API Key in local run. Cannot chat.");
-      return;
-    }
-    setIsChatLoading(true);
+    /** ---------------------------------------
+   * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
+   * -------------------------------------- */
+  const callChatbotAPI = useCallback(
+    async (newMessage, imageInlineData = null) => {
+      const apiKey = isLocalRun ? GEMINI_API_KEY : "";
+      if (!apiKey) {
+        setError("GEMINI API ERROR: Missing API Key in local run. Cannot chat.");
+        return;
+      }
+      setIsChatLoading(true);
 
-    // Prepare history for API call (limit and convert format)
-    const contents = [...chatHistory, { role: 'user', text: newMessage }]
-      .slice(-10) // Keep the last 10 messages for context
-      .map(msg => ({
-        role: msg.role === 'model' ? 'model' : 'user', // Ensure role consistency
-        parts: [{ text: msg.text }]
-      }));
+      // Prepare history for API call (limit and convert format)
+      const contents = [
+        ...chatHistory,
+        { role: 'user', text: newMessage, imageInlineData }
+      ]
+        .slice(-10) // Keep the last 10 messages for context
+        .map(msg => {
+          const parts = [];
+          if (msg.text) {
+            parts.push({ text: msg.text });
+          }
+          if (msg.imageInlineData) {
+            parts.push({ inlineData: msg.imageInlineData });
+          }
+          return {
+            role: msg.role === 'model' ? 'model' : 'user',
+            parts
+          };
+        });
 
-    const systemInstruction = {
-      parts: [{
-        text: `
+      const systemInstruction = {
+        parts: [{
+          text: `
 You are a helpful and professional Health Navigator chatbot of VytalCare.
 
 1. You are in a single continuous chat session.
@@ -1621,91 +1857,196 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
    - Provide general, non-diagnostic information on medications, conditions, and health topics.
    - Always clearly state that your guidance is NOT a substitute for professional medical consultation and is for general information only.
    - Use Google Search (when available as a tool) for up-to-date medical and health context when needed.
-    `
-      }]
-    };
 
+5. IMAGE & PHOTO CLARITY (VERY IMPORTANT):
+   - Users may send photos of wounds, rashes, skin issues, or medicine strips.
+   - FIRST, briefly describe what you see in the image in simple language.
+   - THEN, explain what it *could* be, giving a few possible explanations instead of a single diagnosis.
+   - Clearly state that this is only an AI guess based on the photo and text, and that it is NOT a medical diagnosis.
+   - Encourage the user to see a doctor or emergency service if the wound looks deep, infected (pus, spreading redness, fever), very painful, or if they are worried.
+   - For medicine strips: try to identify the medicine name, common use, and important precautions, but remind users to double-check the strip and consult a professional before taking anything.
+`
+        }]
+      };
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
-    const payload = {
-      contents: contents,
-      tools: [{ "google_search": {} }],
-      systemInstruction: systemInstruction,
-    };
+      const payload = {
+        contents,
+        tools: [{ google_search: {} }],
+        systemInstruction
+      };
 
-    // 1. Prepare and Save User Message to Firestore
-    const userMessage = {
-      role: 'user',
-      text: newMessage,
-      sources: [],
-      createdAt: Date.now()
-    };
-
-    if (db && userId) {
-      try {
-        const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-        // Don't await, let it save in the background
-        addDoc(chatCollectionRef, userMessage);
-      } catch (e) {
-        console.error("Error saving user message to Firestore:", e);
-      }
-    }
-
-    // Optimistic UI update: add user message immediately
-    setChatHistory(prev => [...prev, userMessage]);
-
-
-    try {
-      const res = await exponentialBackoffFetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const result = await res.json();
-      const candidate = result.candidates?.[0];
-      let modelText = "Sorry, I couldn't generate a response. Please check the console for API errors.";
-
-      if (candidate && candidate.content?.parts?.[0]?.text) {
-        modelText = candidate.content.parts[0].text;
-      } else if (result.error) {
-        modelText = `API Error: ${result.error.message}.`;
-      }
-
-      const modelMessage = {
-        role: 'model',
-        text: modelText,
+      // 1. Prepare and Save User Message to Firestore (text only)
+      const userMessage = {
+        role: 'user',
+        text: newMessage,
         sources: [],
         createdAt: Date.now()
       };
 
-      // 2. Save Model Response Message to Firestore
       if (db && userId) {
         try {
           const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-          // Await this to ensure the message is in the DB before the loading spinner disappears
-          await addDoc(chatCollectionRef, modelMessage);
+          addDoc(chatCollectionRef, userMessage);
         } catch (e) {
-          console.error("Error saving model message to Firestore:", e);
+          console.error("Error saving user message to Firestore:", e);
         }
       }
 
-      // The onSnapshot listener (in useEffect) will now handle updating the chatHistory state, 
-      // ensuring the UI reflects the persisted data accurately, including the IDs.
+      // Optimistic UI update: add user message immediately
+      setChatHistory(prev => [...prev, userMessage]);
 
-    } catch (e) {
-      console.error("Chatbot API Error:", e);
-      setChatHistory(prev => [...prev, { role: 'model', text: `Error fetching response: ${e.message}`, sources: [] }]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  }, [isLocalRun, chatHistory, db, userId]); // Dependency update: added db and userId
+      try {
+        const res = await exponentialBackoffFetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        const candidate = result.candidates?.[0];
+        let modelText = "Sorry, I couldn't generate a response. Please check the console for API errors.";
+
+        if (candidate && candidate.content?.parts?.length) {
+          modelText = candidate.content.parts.map(p => p.text || '').join('\n\n');
+        } else if (result.error) {
+          modelText = `API Error: ${result.error.message}.`;
+        }
+
+        const modelMessage = {
+          role: 'model',
+          text: modelText,
+          sources: [],
+          createdAt: Date.now()
+        };
+
+        // 2. Save Model Response Message to Firestore
+        if (db && userId) {
+          try {
+            const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
+            await addDoc(chatCollectionRef, modelMessage);
+          } catch (e) {
+            console.error("Error saving model message to Firestore:", e);
+          }
+        }
+
+        // Optimistic UI update: add model message immediately
+        setChatHistory(prev => [...prev, modelMessage]);
+
+        // Speak response if enabled
+        if (speechEnabled || isVoiceMode) {
+          speakText(modelText);
+        }
+
+      } catch (e) {
+        console.error("Chatbot API Error:", e);
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'model', text: `Error fetching response: ${e.message}`, sources: [], createdAt: Date.now() }
+        ]);
+        if (isVoiceMode) {
+          speakText("I'm sorry, I encountered an error. Please try again.");
+        }
+      } finally {
+        setIsChatLoading(false);
+      }
+    },
+    [isLocalRun, chatHistory, db, userId, speechEnabled, speakText, isVoiceMode]
+  );
 
   // Auto-scroll to bottom of chat
+    // Auto-scroll to bottom of chat + file input ref
   const chatEndRef = useRef(null);
+  const fileInputRef = useRef(null); // NEW: hidden file input for image upload
+  const cameraInputRef = useRef(null); // NEW: hidden file input for taking a photo
+
+  // === Camera modal state & refs ===
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const videoReff = useRef(null);   // <video> element inside the modal
+  const canvasReff = useRef(null);  // hidden <canvas> used to grab a frame
+  const [cameraStream, setCameraStream] = useState(null); // to stop camera later
+
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, isChatLoading]);
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    // Allow only images
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file (jpg, png, etc.)');
+      event.target.value = '';
+      return;
+    }
+    setAttachedImage(file);
+  };
+
+// ===== CAMERA HELPERS =====
+const startCamera = async () => {
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Camera is not supported in this browser.");
+      setIsCameraModalOpen(false);
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }, // back camera on phones, normal cam on laptop
+      audio: false
+    });
+
+    if (videoReff.current) {
+      videoReff.current.srcObject = stream;
+    }
+    setCameraStream(stream);
+  } catch (err) {
+    console.error("Error starting camera:", err);
+    alert("Could not access the camera. Check permissions and try again.");
+    setIsCameraModalOpen(false);
+  }
+};
+
+const stopCamera = () => {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    setCameraStream(null);
+  }
+};
+
+// When the modal opens/closes, start/stop the camera
+useEffect(() => {
+  if (isCameraModalOpen) {
+    startCamera();
+  } else {
+    stopCamera();
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isCameraModalOpen]);
+
+const handleCaptureFromCamera = () => {
+  const video = videoReff.current;
+  const canvas = canvasReff.current;
+  if (!video || !canvas) return;
+
+  const width = video.videoWidth || 640;
+  const height = video.videoHeight || 480;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, width, height);
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
+    setAttachedImage(file);      // same state you use for uploaded images
+    setIsCameraModalOpen(false); // close modal
+  }, "image/jpeg", 0.9);
+};
+
 
   const handleClearChat = () => {
     if (!window.confirm("Are you sure you want to clear the chat history?")) return;
@@ -1723,6 +2064,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
 
     // Immediately clear the visible chat in this session
     setChatHistory([INITIAL_CHAT_WELCOME]);
+    setAttachedImage(null); // also clear any attached image
   };
 
 
@@ -1937,25 +2279,39 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
   );
 
   const renderRemindersTab = () => {
-    // Find next dose
-    const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    let nextDose = null;
-    let minDiff = Infinity;
-
-    todaySchedule.forEach(item => {
-      const [h, m] = item.time.split(':').map(Number);
-      const itemMinutes = h * 60 + m;
-      let diff = itemMinutes - currentMinutes;
-
-      // If it's earlier today, it's passed. We only want future doses for "Next Dose"
-      // Unless we want to show tomorrow's first dose? For now, let's stick to today's remaining.
-      if (diff > 0 && diff < minDiff) {
-        minDiff = diff;
-        nextDose = { ...item, diffMinutes: diff };
+    // Enrich schedule with status
+    const scheduleWithStatus = todaySchedule.map(item => {
+      let h, m;
+      // Robust time parsing (HH:MM or HHMM legacy)
+      if (item.time && item.time.includes(':')) {
+        [h, m] = item.time.split(':').map(Number);
+      } else if (item.time && item.time.length === 4) {
+        h = parseInt(item.time.substring(0, 2), 10);
+        m = parseInt(item.time.substring(2, 4), 10);
+      } else {
+        h = 0; m = 0;
       }
-    });
+      if (isNaN(h)) h = 0;
+      if (isNaN(m)) m = 0;
+
+      const itemMinutes = h * 60 + m;
+      const uniqueKey = `${item.medId}_${item.time}`;
+      const isTaken = takenMedications.has(uniqueKey);
+
+      // "Missed" logic: Not taken AND > 15 mins passed
+      // diffMinutes < -15 means scheduled time was more than 15 mins ago
+      const diffMinutes = itemMinutes - currentMinutes;
+      const isMissed = !isTaken && diffMinutes < -15;
+      const isPast = itemMinutes < currentMinutes;
+
+      return { ...item, itemMinutes, diffMinutes, isTaken, isMissed, isPast, uniqueKey };
+    }).sort((a, b) => a.itemMinutes - b.itemMinutes);
+
+    // Up Next: First item that is NOT taken AND NOT missed
+    // (If it's missed, it stays in timeline with red dot. Up Next moves to future.)
+    const nextDose = scheduleWithStatus.find(item => !item.isTaken && !item.isMissed);
 
     return (
       <div className="space-y-8 p-6 animate-fade-in">
@@ -1984,7 +2340,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
                 <h3 className="text-3xl font-bold">{nextDose.medName}</h3>
                 <p className="text-white/80 mt-1 flex items-center">
                   <span className="bg-white/20 px-2 py-0.5 rounded-lg text-sm mr-2">{nextDose.dose}</span>
-                  at {formatTime(nextDose.time)}
+                  at {formatTimeWithBoth(nextDose.time).time24}
                 </p>
               </div>
               <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
@@ -1993,7 +2349,10 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
             </div>
             <div className="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
               <p className="text-sm font-medium">
-                Due in {Math.floor(nextDose.diffMinutes / 60)}h {nextDose.diffMinutes % 60}m
+                {nextDose.diffMinutes < 0
+                  ? `Due now (${Math.abs(nextDose.diffMinutes)}m ago)`
+                  : `Due in ${Math.floor(nextDose.diffMinutes / 60)}h ${nextDose.diffMinutes % 60}m`
+                }
               </p>
               <button
                 onClick={() => handleMarkAsTaken(nextDose)}
@@ -2017,43 +2376,67 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
 
             {isLoading ? (
               <LoadingSpinner />
-            ) : todaySchedule.length === 0 ? (
+            ) : scheduleWithStatus.length === 0 ? (
               <div className="text-center py-12 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                 <Bell size={48} className="mx-auto mb-3 text-slate-300" />
                 <p className="text-text-muted italic">No medications scheduled for today.</p>
               </div>
             ) : (
-              <div className="relative pl-8 space-y-8 before:content-[''] before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200">
-                {todaySchedule.sort((a, b) => a.time.localeCompare(b.time)).map((item, idx) => {
-                  const [h, m] = item.time.split(':').map(Number);
-                  const itemMinutes = h * 60 + m;
-                  const isPast = itemMinutes < currentMinutes;
+              <div className="relative pl-8 space-y-8 before:content-[''] before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-200 dark:before:bg-slate-700">
+                {scheduleWithStatus.map((item) => {
+                  // Visual Logic
+                  // Taken: Green dot, opacity normal
+                  // Missed: Red dot, opacity normal
+                  // Pending: Primary/Gray dot
+                  let dotColor = 'bg-primary';
+                  if (item.isTaken) dotColor = 'bg-green-500 border-green-500';
+                  else if (item.isMissed) dotColor = 'bg-red-500 border-red-500';
+                  else if (item.isPast) dotColor = 'bg-slate-300 border-slate-300'; // Past but not missed (e.g. < 15m or handled by logic) - actually logic says >15m is missed. 0-15m is overdue (Primary).
 
                   return (
-                    <div key={item.key} className="relative group">
+                    <div key={item.uniqueKey} className="relative group">
                       {/* Timeline Dot */}
-                      <div className={`absolute -left-[39px] top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-4 border-white shadow-sm z-10 ${isPast ? 'bg-slate-300' : 'bg-primary'}`} />
+                      <div className={`absolute -left-[39px] top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-4 border-white dark:border-slate-900 shadow-sm z-10 ${dotColor}`} />
 
-                      <div className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-200 ${isPast ? 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700 opacity-70' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-primary/30'}`}>
+                      <div className={`flex items-center justify-between p-5 rounded-2xl border transition-all duration-200 
+                        ${item.isTaken
+                          ? 'bg-green-50 dark:bg-green-900/10 border-green-100 dark:border-green-900/30'
+                          : item.isMissed
+                            ? 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30'
+                            : item.isPast
+                              ? 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+                              : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-primary/30'
+                        }`}>
                         <div className="flex items-center gap-5">
-                          <div className={`text-xl font-mono font-bold ${isPast ? 'text-slate-400' : 'text-primary'}`}>
+                          <div className={`text-xl font-mono font-bold ${item.isTaken ? 'text-green-600' : item.isMissed ? 'text-red-500' : item.isPast ? 'text-slate-400' : 'text-primary'}`}>
                             {formatTimeWithBoth(item.time).time24}
                             <div className="text-xs font-normal text-text-muted dark:text-slate-400">({formatTimeWithBoth(item.time).time12})</div>
                           </div>
                           <div>
-                            <p className={`text-lg font-bold ${isPast ? 'text-slate-500 dark:text-slate-400' : 'text-text-main dark:text-white'}`}>{item.medName}</p>
+                            <p className={`text-lg font-bold ${item.isTaken ? 'text-green-700 dark:text-green-400' : item.isMissed ? 'text-red-700 dark:text-red-400' : 'text-text-main dark:text-white'}`}>
+                              {item.medName}
+                              {item.isTaken && <span className="ml-2 text-xs bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-100 px-2 py-0.5 rounded-full">Taken</span>}
+                            </p>
                             <p className="text-sm text-text-muted dark:text-slate-400 flex items-center">
-                              <span className={`w-1.5 h-1.5 rounded-full mr-2 ${isPast ? 'bg-slate-300' : 'bg-secondary'}`}></span>
+                              <span className={`w-1.5 h-1.5 rounded-full mr-2 ${item.isTaken ? 'bg-green-400' : 'bg-secondary'}`}></span>
                               {item.dose}
                             </p>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {isPast && <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">Passed</span>}
+                          {!item.isTaken && item.isMissed && (
+                            <button
+                              onClick={() => handleMarkAsTaken(item)}
+                              className="px-3 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                            >
+                              Mark as Taken
+                            </button>
+                          )}
+
                           <button
                             onClick={() => handleDeleteMedication(item.medId)}
-                            className="p-2 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                            className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                             aria-label="Delete medication"
                           >
                             <Trash2 size={18} />
@@ -2140,10 +2523,13 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Steps Card */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 dark:bg-primary/10 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-          <button 
-            onClick={() => setActiveInfoMetric('steps')}
+        <div
+          onClick={() => scrollToGraph('steps')}
+          className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer"
+        >
+          <div className="absolute top-0 right-0 w-24 h-24 bg-[#0F766E]/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('steps'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-primary/70 hover:text-primary"
           >
             <Info size={18} />
@@ -2165,10 +2551,13 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         </div>
 
         {/* Sleep Card */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+        <div
+          onClick={() => scrollToGraph('sleep')}
+          className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer"
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-          <button 
-            onClick={() => setActiveInfoMetric('sleep')}
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('sleep'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-indigo-500/70 hover:text-indigo-500"
           >
             <Info size={18} />
@@ -2194,12 +2583,12 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Calories Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-orange-50 dark:bg-orange-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-          <button 
-          onClick={() => setActiveInfoMetric('calories')}
-          className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-orange-500/70 hover:text-orange-500"
-        >
-          <Info size={18} />
-        </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('calories'); }}
+            className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-orange-500/70 hover:text-orange-500"
+          >
+            <Info size={18} />
+          </button>
           {calories !== null ? (
             <>
               <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/40 rounded-2xl flex items-center justify-center mb-4 text-orange-600 dark:text-orange-400">
@@ -2221,8 +2610,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         {/* Hydration Card */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-50 dark:bg-cyan-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
-          <button 
-            onClick={() => setActiveInfoMetric('hydration')}
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('hydration'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-cyan-500/70 hover:text-cyan-500"
           >
             <Info size={18} />
@@ -2246,14 +2635,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
 
             <div className="flex items-center justify-center gap-3">
               <button
-                onClick={() => updateHydration(-250)}
+                onClick={(e) => { e.stopPropagation(); updateHydration(-250); }}
                 className="p-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                 disabled={hydration <= 0}
               >
                 <Minus size={18} />
               </button>
               <button
-                onClick={() => updateHydration(250)}
+                onClick={(e) => { e.stopPropagation(); updateHydration(250); }}
                 className="flex items-center px-4 py-2 bg-cyan-500 dark:bg-cyan-700/80 text-white rounded-xl font-semibold shadow-md shadow-cyan-200 dark:shadow-cyan-900/20 hover:bg-cyan-600 dark:hover:bg-cyan-600/80 transition-colors"
               >
                 <Plus size={16} className="mr-1" /> 250ml
@@ -2263,11 +2652,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         </div>
 
         {/* Distance Card */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+        <div
+          onClick={() => scrollToGraph('distance')}
+          className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer"
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 dark:bg-blue-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
 
-          <button 
-            onClick={() => setActiveInfoMetric('distance')}
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('distance'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-blue-500/70 hover:text-blue-500"
           >
             <Info size={18} />
@@ -2291,11 +2683,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         </div>
 
         {/* Heart Rate Card */}
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group">
+        <div
+          onClick={() => scrollToGraph('heartRate')}
+          className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer"
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 dark:bg-red-900/30 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
 
-          <button 
-            onClick={() => setActiveInfoMetric('heartRate')}
+          <button
+            onClick={(e) => { e.stopPropagation(); setActiveInfoMetric('heartRate'); }}
             className="absolute top-4 right-4 z-20 p-2 bg-white/50 dark:bg-black/20 hover:bg-white dark:hover:bg-slate-700 rounded-full backdrop-blur-sm transition-all text-red-500/70 hover:text-red-500"
           >
             <Info size={18} />
@@ -2371,7 +2766,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+        <div ref={heartRateRef} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 ${highlightedGraph === 'heartRate' ? 'glow-red' : ''}`}>
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Heart size={25} className="mr-2 text-secondary" /> Heart Rate Trend
           </h3>
@@ -2389,7 +2784,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+        <div ref={stepsRef} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 ${highlightedGraph === 'steps' ? 'glow-teal' : ''}`}>
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Footprints size={25} color="#0F766E" className="mr-2 text-secondary" />Steps Trend
           </h3>
@@ -2419,7 +2814,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
                   backgroundColor: "#fff",
                   borderRadius: "12px",
                   border: "1px solid #e5e7eb",
-                  boxShadow: "0 4px 6px rgba(0,0,0,0.08)"
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
                 }}
               />
 
@@ -2445,8 +2840,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           </ResponsiveContainer>
 
         </div>
-        <div className="relative bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 
-                hover:shadow-md transition-shadow overflow-hidden">
+        <div ref={distanceRef} className={`relative bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 
+                hover:shadow-md transition-shadow overflow-hidden ${highlightedGraph === 'distance' ? 'glow-blue' : ''}`}>
 
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Ruler size={25} color='#14b8a6' className="mr-2 text-secondary" />Distance Trend
@@ -2495,7 +2890,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+        <div ref={sleepRef} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 ${highlightedGraph === 'sleep' ? 'glow-indigo' : ''}`}>
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
             <Moon size={25} color="#6366F1" className="mr-2 text-secondary" />Sleep Trend</h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -2586,6 +2981,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
     </div >
   );
 
+
   const renderChatbotTab = () => {
     // Read the last clear timestamp from localStorage
     const clearedAtKey = userId ? `chatClearedAt_${userId}` : null;
@@ -2606,13 +3002,115 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
     }
 
     return (
-      <div className="flex flex-col h-[70vh] p-6 animate-fade-in">
-        <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-700 mb-4">
-          <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
-            <MessageSquare size={28} className="mr-3 text-primary" />
-            Health Chatbot
-          </h2>
+      <div className="flex flex-col h-[70vh] p-6 animate-fade-in relative">
+        {/* Voice Mode Overlay */}
+        {isVoiceMode && (
+          <div className="absolute inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex flex-col items-center justify-center p-8 rounded-3xl animate-fade-in">
+            <div className="relative mb-8">
+              <div className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 ${isSpeaking ? 'bg-primary/20 scale-110' : isListening ? 'bg-red-500/10 scale-100' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 ${isSpeaking ? 'bg-primary text-white shadow-lg shadow-primary/30' : isListening ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse' : 'bg-slate-200 dark:bg-slate-700 text-slate-400'}`}>
+                  {isSpeaking ? <Volume2 size={48} /> : isListening ? <Mic size={48} /> : <MicOff size={48} />}
+                </div>
+              </div>
+              {/* Ripple effects */}
+              {isListening && (
+                <>
+                  <div className="absolute inset-0 rounded-full border-4 border-red-500/30 animate-ping" style={{ animationDuration: '2s' }} />
+                  <div className="absolute inset-0 rounded-full border-4 border-red-500/20 animate-ping" style={{ animationDuration: '2s', animationDelay: '0.5s' }} />
+                </>
+              )}
+            </div>
 
+            <h3 className="text-2xl font-bold text-text-main dark:text-white mb-2">
+              {isSpeaking ? "Speaking..." : isListening ? "Listening..." : "Processing..."}
+            </h3>
+            <p className="text-text-muted dark:text-slate-400 text-center max-w-md mb-8">
+              {isSpeaking ? "The AI is responding to you." : isListening ? "Go ahead, I'm listening." : "Please wait a moment."}
+            </p>
+
+            <button
+              onClick={stopVoiceMode}
+              className="px-8 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-text-main dark:text-white rounded-xl font-semibold transition-colors flex items-center gap-2"
+            >
+              <X size={20} /> Exit Voice Mode
+            </button>
+          </div>
+        )}
+
+                        <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-700 mb-4">
+          {/* Left: Title + Voice/Language controls */}
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
+              <MessageSquare size={28} className="mr-3 text-primary" />
+              Health Chatbot
+            </h2>
+
+            {/* Voice Controls */}
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+              {/* Voice Mode Toggle */}
+              <button
+                onClick={isVoiceMode ? stopVoiceMode : startVoiceMode}
+                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-all text-xs font-semibold ${
+                  isVoiceMode
+                    ? 'bg-red-500 text-white shadow-sm animate-pulse'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+                }`}
+                title={isVoiceMode ? "Exit Voice Mode" : "Start Voice Conversation"}
+              >
+                {isVoiceMode ? <MicOff size={14} /> : <Mic size={14} />}
+                {isVoiceMode ? "Exit Voice" : "Voice Mode"}
+              </button>
+
+              <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-600 mx-1"></div>
+
+              {/* Mute / TTS toggle */}
+              <button
+                onClick={() => {
+                  setSpeechEnabled(!speechEnabled);
+                  if (speechEnabled) stopSpeaking();
+                }}
+                className={`p-1.5 rounded-md transition-all ${
+                  speechEnabled
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                }`}
+                title={speechEnabled ? "Disable Text-to-Speech" : "Enable Text-to-Speech"}
+              >
+                {speechEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              </button>
+
+              <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-600 mx-1"></div>
+
+              {/* Language selector */}
+              <div className="relative group">
+                <button className="flex items-center gap-1 p-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors">
+                  <Globe size={14} />
+                  {LANGUAGES.find(l => l.code === selectedLanguage)?.code
+                    .split('-')[0]
+                    .toUpperCase()}
+                </button>
+
+                {/* Language Dropdown */}
+                <div className="absolute top-full right-0 mt-1 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 overflow-hidden z-50 hidden group-hover:block">
+                  {LANGUAGES.map(lang => (
+                    <button
+                      key={lang.code}
+                      onClick={() => setSelectedLanguage(lang.code)}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${
+                        selectedLanguage === lang.code
+                          ? 'text-primary font-bold bg-primary/5'
+                          : 'text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      {lang.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Clear button */}
           <button
             onClick={handleClearChat}
             className="ml-auto text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors flex items-center border border-red-100"
@@ -2621,6 +3119,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
             <Trash2 size={14} className="mr-1" /> Clear
           </button>
         </div>
+
 
         <div className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
           {visibleMessages.map((msg, index) => (
@@ -2663,39 +3162,225 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           <div ref={chatEndRef} />
         </div>
 
-        <form
+                <form
           onSubmit={(e) => {
             e.preventDefault();
-            const message = chatInput.trim();
-            if (!message) return;
-            const currentMessage = message;
+            const trimmed = chatInput.trim();
+
+            // Don't send empty message with no image
+            if (!trimmed && !attachedImage) return;
+
+            // Capture current values before clearing state
+            const messageToSend = trimmed || (attachedImage ? "Please help me understand this photo." : "");
+            const imageFile = attachedImage || null;
+
+            // Clear UI fields
             setChatInput('');
-            callChatbotAPI(currentMessage);
+            setAttachedImage(null);
+
+            if (imageFile) {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64 = reader.result.split(',')[1];
+                const imageInlineData = {
+                  data: base64,
+                  mimeType: imageFile.type || "image/jpeg",
+                };
+                callChatbotAPI(messageToSend, imageInlineData);
+              };
+              reader.readAsDataURL(imageFile);
+            } else {
+              callChatbotAPI(messageToSend, null);
+            }
           }}
           className="relative mt-2"
         >
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            placeholder="Ask a health question."
-            className="w-full p-4 pr-32 border border-slate-200 dark:border-slate-700 rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-900 dark:text-white shadow-sm"
-          />
-          <button
-            type="submit"
-            disabled={!chatInput.trim() || isChatLoading}
-            className={`absolute right-2 top-2 bottom-2 px-6 rounded-xl font-semibold transition-all duration-200 flex items-center ${chatInput.trim() && !isChatLoading
-              ? 'bg-primary text-white shadow-md hover:bg-primary-dark hover:shadow-lg'
-              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          {/* Attached image preview */}
+          {attachedImage && (
+            <div className="flex items-center gap-3 mb-2 px-2">
+              <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                <img
+                  src={URL.createObjectURL(attachedImage)}
+                  alt="Attached preview"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="flex-1 text-xs text-text-muted dark:text-slate-400">
+                <div className="font-semibold text-text-main dark:text-slate-100 mb-0.5">
+                  {attachedImage.name}
+                </div>
+                <div>
+                  Image attached. You can also type extra details before sending.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachedImage(null);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+                className="text-xs px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          <div className="relative w-full">
+            {/* Mic Button - Left */}
+            <button
+              type="button"
+              onClick={toggleListening}
+              className={`absolute left-2 top-2 bottom-2 w-10 flex items-center justify-center rounded-xl transition-all duration-200 ${
+                isListening
+                  ? 'bg-red-500 text-white animate-pulse shadow-md'
+                  : 'text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
-          >
-            <Send size={18} className="mr-2" /> Send
-          </button>
+              title={isListening ? "Stop Listening" : "Start Voice Input"}
+            >
+              {isListening ? <MicOff size={20} /> : <Mic size={20} />}
+            </button>
+
+            {/* Hidden file input */}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment" 
+              ref={fileInputRef}
+              className="hidden"
+              onChange={handleFileChange}
+            />
+
+            {/* Hidden file input for camera */}
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                ref={cameraInputRef}
+                className="hidden"
+                onChange={handleFileChange}
+              />
+
+            {/* Text input */}
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder={
+                isListening
+                  ? "Listening..."
+                  : "Ask a health question or upload a photo"
+              }
+              className={`w-full p-4 pl-14 pr-32 border rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm ${
+                isListening
+                  ? 'border-red-300 bg-red-50/50 dark:bg-red-900/20'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+              }`}
+            />
+
+            {/* Right-side buttons (attach + send) */}
+            <div className="absolute right-2 top-2 bottom-2 flex items-center gap-2">
+              {/* Attach image button */}
+              <button
+                type="button"
+                onClick={() => setShowAttachMenu(prev => !prev)} // NEW: toggle menu
+                className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                title="Upload/Take photo"
+              >
+                <Paperclip size={18} />
+              </button>
+
+              {showAttachMenu && (
+                  <div className="absolute right-12 top-0 mt-1 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-50 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAttachMenu(false);
+                        if (fileInputRef.current) fileInputRef.current.click(); // open file browser
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-t-xl"
+                    >
+                      Upload from computer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAttachMenu(false);
+                        setIsCameraModalOpen(true);   
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-b-xl border-t border-slate-100 dark:border-slate-700"
+                    >
+                      Take a photo
+                    </button>
+                  </div>
+                )}
+
+
+              {/* Send button */}
+              <button
+                type="submit"
+                disabled={(!chatInput.trim() && !attachedImage) || isChatLoading}
+                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${
+                  (!chatInput.trim() && !attachedImage) || isChatLoading
+                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                    : 'bg-primary text-white shadow-md hover:shadow-lg hover:-translate-y-0.5'
+                }`}
+              >
+                {isChatLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Send size={18} />
+                )}
+              </button>
+            </div>
+          </div>
         </form>
+                {isCameraModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3">
+              <h3 className="text-sm font-semibold text-text-main dark:text-slate-100 mb-1">
+                Take a photo
+              </h3>
+
+              {/* Live video preview */}
+              <div className="relative w-full rounded-xl overflow-hidden bg-black aspect-video">
+                <video
+                  ref={videoReff}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              {/* Hidden canvas just for capturing the frame */}
+              <canvas ref={canvasReff} className="hidden" />
+
+              <div className="flex justify-end gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick= {() => {
+                  stopCamera();
+                  setIsCameraModalOpen(false); }}
+                  className="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCaptureFromCamera}
+                  className="px-3 py-2 text-xs rounded-xl bg-primary text-white font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+                >
+                  Capture
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
-
 
   /** ---------------------------------------
    * Error banner (unchanged)
@@ -2761,6 +3446,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
     );
   };
 
+
+
   // =====================RENDER INFO================================
   const renderInfoModal = () => {
     if (!activeInfoMetric) return null;
@@ -2774,14 +3461,14 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           </button>
           <div className="flex items-center mb-4">
             <div className="p-3 bg-primary/10 rounded-xl mr-3">
-               <Info className="text-primary" size={24} />
+              <Info className="text-primary" size={24} />
             </div>
             <h3 className="text-xl font-bold text-text-main dark:text-white">{info.title}</h3>
           </div>
           <p className="text-text-muted dark:text-slate-300 leading-relaxed text-sm">
             {info.desc}
           </p>
-          <button 
+          <button
             onClick={() => setActiveInfoMetric(null)}
             className="mt-6 w-full py-3 bg-primary text-white rounded-xl font-semibold shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all"
           >
@@ -2791,6 +3478,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
       </div>
     );
   };
+
+
   // =========================================================
 
   /** ---------------------------------------
@@ -2807,7 +3496,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           <div className="flex items-center mb-4 md:mb-0">
             <div className="w-25 h-25 rounded-xl flex items-center justify-center mr-3">
               <img
-                src="src\assets\iconn.png"
+                src={appIcon}
                 alt="VytalCare Logo"
                 className="w-10 h-10 object-contain"
                 style={{ width: "50px", height: "50px", marginRight: "10px" }}
