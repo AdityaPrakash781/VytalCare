@@ -2403,7 +2403,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
                 </linearGradient>
               </defs>
 
-              <CartesianGrid strokeDasharray="3 3" stroke="#eef2f3" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#a1a3a4ff" />
 
               <XAxis dataKey="time" stroke="#94a3b8" tickLine={false} axisLine={false} fontSize={12} />
               <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} fontSize={12} />
@@ -2428,7 +2428,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
                 type="monotone"
                 dataKey="steps"
                 stroke="#0F766E"
-                strokeWidth={3}
+                strokeWidth={4}
                 dot={false}
               />
 
