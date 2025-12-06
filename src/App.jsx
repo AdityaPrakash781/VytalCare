@@ -381,10 +381,14 @@ const InputField = ({ label, name, type = "text", placeholder, isEditing, profil
 const LoginPage = ({ handleLogin, error }) => (
   <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-background dark:bg-slate-950">
     <div className="max-w-md w-full p-8 rounded-3xl shadow-xl bg-surface dark:bg-slate-900 text-center border border-slate-100 dark:border-slate-800 animate-fade-in">
-      <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
-        <Heart className="w-8 h-8 text-primary" />
-      </div>
-      <h1 className="text-4xl font-bold mb-3 text-text-main dark:text-white tracking-tight">Health Navigator</h1>
+      <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700">
+      <img 
+        src={appIcon} 
+        alt="VytalCare Logo" 
+        className="w-full h-full object-contain" 
+      />
+    </div>
+      <h1 className="text-4xl font-bold mb-3 text-text-main dark:text-white tracking-tight">VytalCare</h1>
       <p className="text-lg mb-8 text-text-muted dark:text-slate-400">
         Your personal AI health companion. Sign in to manage medications and track your vitals.
       </p>
@@ -440,7 +444,7 @@ const exponentialBackoffFetch = async (url, options, maxRetries = 3) => {
 /** ---------------------------------------
  * Main App
  * -------------------------------------- */
-const INITIAL_CHAT_WELCOME = { role: 'model', text: 'Hello! I am your Health Navigator chatbot. I can provide general information on medications, conditions, and health topics using Google Search for the latest context. Always consult a professional for medical advice!', sources: [], createdAt: Date.now() };
+const INITIAL_CHAT_WELCOME = { role: 'model', text: 'Hello! I am your VytalCare Chatbot. I can provide general information on medications, conditions, and health topics using Google Search for the latest context. Always consult a professional for medical advice!', sources: [], createdAt: Date.now() };
 
 const getTodayDateKey = () => {
   const d = new Date();
@@ -1568,7 +1572,7 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
     const systemInstruction = {
       parts: [{
         text: `
-You are a helpful and professional Health Navigator chatbot.
+You are a helpful and professional Health Navigator chatbot of VytalCare.
 
 1. You are in a single continuous chat session.
    - The "contents" you receive include the full recent conversation history.
