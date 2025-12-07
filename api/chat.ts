@@ -45,6 +45,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { message, metrics } = req.body;
+    // FIX: Prevent undefined variable error when metrics.profile exists (frontend sends it)
+    const profile = metrics?.profile || {};
 
     // Safety Checks
     const emergencyKeywords = ["chest pain", "crushing", "suicide", "bleeding profusely"];
