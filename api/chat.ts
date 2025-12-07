@@ -19,8 +19,9 @@ import { PineconeVectorStore } from "@llamaindex/pinecone";
 // --- GLOBAL CONFIGURATION ---
 
 // FIX 2: Configure Gemini using correct enums
+// FIX: Add 'as any' to bypass strict type checking
 Settings.llm = new Gemini({
-  model:  GEMINI_MODEL.GEMINI_PRO_1_5_FLASH,
+  model: "models/gemini-1.5-flash" as any, 
   apiKey: process.env.GOOGLE_API_KEY,
   temperature: 0.1
 });
