@@ -35,11 +35,10 @@ async function getRetriever(namespace: string, topK = 3) {
 // ------------------------------------------
 async function callGeminiLLM(prompt: string) {
   const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing GOOGLE_API_KEY environment variable");
-  }
+  if (!apiKey) throw new Error("Missing GOOGLE_API_KEY");
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  // ✅ Correct endpoint for your API key
+  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [
@@ -57,18 +56,16 @@ async function callGeminiLLM(prompt: string) {
   });
 
   if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Gemini API error: ${resp.status} ${errText}`);
+    const err = await resp.text();
+    throw new Error(`Gemini API error: ${resp.status} ${err}`);
   }
 
   const data: any = await resp.json();
-  const candidates = data.candidates || [];
-  const content = candidates[0]?.content?.parts || [];
-  const text = content.map((p: any) => p.text || "").join("\n").trim();
+  const text =
+    data.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("\n") ??
+    "";
 
-  if (!text) {
-    throw new Error("Gemini returned an empty response");
-  }
+  if (!text) throw new Error("Gemini returned an empty response");
 
   return text;
 }
