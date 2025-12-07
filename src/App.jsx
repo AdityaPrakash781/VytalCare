@@ -479,6 +479,12 @@ const App = () => {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
+  // >> NEW: Profile State <<
+  const [profile, setProfile] = useState({
+     userName: '',
+     userAge: '',
+     conditions: ''
+  });
   const [medications, setMedications] = useState([]);
   const [newMedication, setNewMedication] = useState({ name: '', dose: '', times: ['08:00'] });
   const [isAdding, setIsAdding] = useState(false);
@@ -686,7 +692,17 @@ const App = () => {
   /** ----------------------------
    * Firestore Listeners
    * --------------------------- */
-
+// >> NEW: Profile Listener <<
+  useEffect(() => {
+    if (!db || !userId) return;
+    const docRef = doc(db, `/artifacts/${appId}/users/${userId}`);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setProfile(prev => ({ ...prev, ...docSnap.data() }));
+      }
+    }, (error) => console.error("Error fetching profile:", error));
+    return () => unsubscribe();
+  }, [db, userId, appId]);
   // 1. Medication Listener
   useEffect(() => {
     if (!db || !userId) return;
@@ -1809,6 +1825,7 @@ const getContextPayload = () => {
     profile: profile 
   };
 };
+
 /** ---------------------------------------
    * Chatbot API Call - UPDATED FOR RAG BACKEND
    * -------------------------------------- */

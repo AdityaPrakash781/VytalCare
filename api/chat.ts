@@ -4,37 +4,26 @@ import {
   RetrieverQueryEngine,
   Settings
 } from "llamaindex";
-
-// FIXED: Import correct enums for Gemini model typing
-import { 
-  Gemini, 
-  GeminiEmbedding,
-  GEMINI_MODEL,
-  GEMINI_EMBEDDING_MODEL
-} from "@llamaindex/google";
-
-// FIX 1: Correct Imports from separate packages
 import { PineconeVectorStore } from "@llamaindex/pinecone";
+import { Gemini, GeminiEmbedding } from "@llamaindex/google";
 
 // --- GLOBAL CONFIGURATION ---
 
-// FIX 2: Configure Gemini using correct enums
-// FIX: Add 'as any' to bypass strict type checking
+// FIX: Use 'as any' to bypass strict Enum checks for newer models
 Settings.llm = new Gemini({
-  model: "models/gemini-1.5-flash" as any, 
+  model: "models/gemini-1.5-flash" as any,
   apiKey: process.env.GOOGLE_API_KEY,
   temperature: 0.1
 });
 
 Settings.embedModel = new GeminiEmbedding({
-  model: GEMINI_EMBEDDING_MODEL.TEXT_EMBEDDING_004,
+  model: "models/text-embedding-004" as any,
   apiKey: process.env.GOOGLE_API_KEY
 });
 
 // Helper: Get retriever for specific namespace
 async function getRetriever(namespace: string, topK = 3) {
-
-  // FIX 3: Initialize PineconeVectorStore directly with correct params
+  // FIX: Initialize PineconeVectorStore directly with API Key (no 'db' param)
   const vectorStore = new PineconeVectorStore({ 
     indexName: process.env.PINECONE_INDEX_NAME!,
     apiKey: process.env.PINECONE_API_KEY!,
@@ -46,7 +35,7 @@ async function getRetriever(namespace: string, topK = 3) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS Handling
+  // CORS / Method Handling
   if (req.method === 'OPTIONS') {
     return res.status(200).send('ok');
   }
@@ -57,7 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { message, metrics } = req.body;
 
-    // 1. Safety Check
+    // Safety Checks
     const emergencyKeywords = ["chest pain", "crushing", "suicide", "bleeding profusely"];
     if (emergencyKeywords.some(k => message.toLowerCase().includes(k))) {
       return res.status(200).json({ 
@@ -66,23 +55,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // 2. Build Context
     const contextStr = `
       User Health Profile:
       - Steps Today: ${metrics?.steps || "N/A"}
-      - Heart Rate: ${metrics?.heartRate || "Unknown"}bpm
+      - Heart Rate: ${metrics?.heartRate || "Unknown"}
       - Sleep: ${metrics?.sleep || "Unknown"} hrs
       - Meds: ${metrics?.takenMeds?.join(", ") || "None"}
     `;
 
-    // 3. Routing (Simple)
     let namespace = "medical-knowledge";
     const lowerMsg = message.toLowerCase();
     if (lowerMsg.includes("pill") || lowerMsg.includes("drug") || lowerMsg.includes("dose")) {
       namespace = "drug-safety";
     }
 
-    // 4. Retrieval & Generation
     const retriever = await getRetriever(namespace);
     const queryEngine = new RetrieverQueryEngine(retriever);
 
