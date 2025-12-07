@@ -190,45 +190,9 @@ const calculateAge = (dob) => {
 const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showColorBlindMenu, setShowColorBlindMenu] = useState(false);
-  const [profile, setProfile] = useState({
-    userName: '',
-    userPhone: '',
-    userEmail: '',
-    userDob: '', // Date of Birth field for age calculation
-    userSex: '',
-    userAge: '',
-    userHeight: '',
-    userWeight: '',
-    caregiverName: '',
-    caregiverPhone: '',
-    caregiverEmail: ''
-  });
-  const [loading, setLoading] = useState(true);
+ 
 
-  // CHANGED: Read directly from users/{userId}
-  useEffect(() => {
-    if (!db || !userId) return;
-    // Old Path: .../users/${userId}/profile/data
-    // New Path: .../users/${userId}
-    const docRef = doc(db, `/artifacts/${appId}/users/${userId}`);
-
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        // Auto-update age if DOB exists
-        if (data.userDob) {
-          const currentAge = calculateAge(data.userDob);
-          if (currentAge !== data.userAge) {
-            data.userAge = currentAge;
-          }
-        }
-        setProfile(prev => ({ ...prev, ...data }));
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [db, userId, appId]);
-
+ 
   // CHANGED: Write directly to users/{userId}
   const handleSave = async () => {
     if (!db || !userId) return;
@@ -259,7 +223,7 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
     });
   };
 
-  if (loading) return <div className="p-4"><LoadingSpinner /></div>;
+  if (!profile) return <div className="p-4"><LoadingSpinner /></div>;
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
@@ -1834,79 +1798,14 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
   /** ---------------------------------------
  * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
  * -------------------------------------- */
+/** ---------------------------------------
+   * Chatbot API Call - UPDATED FOR RAG BACKEND
+   * -------------------------------------- */
   const callChatbotAPI = useCallback(
     async (newMessage, imageInlineData = null) => {
-      const apiKey = isLocalRun ? GEMINI_API_KEY : "";
-      if (!apiKey) {
-        setError("GEMINI API ERROR: Missing API Key in local run. Cannot chat.");
-        return;
-      }
       setIsChatLoading(true);
 
-      // Prepare history for API call (limit and convert format)
-      const contents = [
-        ...chatHistory,
-        { role: 'user', text: newMessage, imageInlineData }
-      ]
-        .slice(-10) // Keep the last 10 messages for context
-        .map(msg => {
-          const parts = [];
-          if (msg.text) {
-            parts.push({ text: msg.text });
-          }
-          if (msg.imageInlineData) {
-            parts.push({ inlineData: msg.imageInlineData });
-          }
-          return {
-            role: msg.role === 'model' ? 'model' : 'user',
-            parts
-          };
-        });
-
-      const systemInstruction = {
-        parts: [{
-          text: `
-You are a helpful and professional Health Navigator chatbot of VytalCare.
-
-1. You are in a single continuous chat session.
-   - The "contents" you receive include the full recent conversation history.
-   - You MUST use that history for context when answering.
-
-2. MEMORY / CONTEXT BEHAVIOUR (VERY IMPORTANT):
-   - You CAN remember and refer to information the user told you earlier in THIS conversation.
-   - This includes their name, age, conditions they mention, medications, and other details.
-   - If the user asks things like "What is my name?" or "What did I just tell you?", answer using the information from earlier messages in this chat.
-   - DO NOT say that you "cannot retain personal information", that "each interaction is fresh", or that you "do not remember previous messages". Within this chat, you DO have access to prior messages through the provided contents.
-
-3. PRIVACY:
-   - Do NOT invent or assume any personal details that were not explicitly given in the conversation.
-   - Only use what is present in the chat history.
-
-4. MEDICAL BEHAVIOUR:
-   - Provide general, non-diagnostic information on medications, conditions, and health topics.
-   - Always clearly state that your guidance is NOT a substitute for professional medical consultation and is for general information only.
-   - Use Google Search (when available as a tool) for up-to-date medical and health context when needed.
-
-5. IMAGE & PHOTO CLARITY (VERY IMPORTANT):
-   - Users may send photos of wounds, rashes, skin issues, or medicine strips.
-   - FIRST, briefly describe what you see in the image in simple language.
-   - THEN, explain what it *could* be, giving a few possible explanations instead of a single diagnosis.
-   - Clearly state that this is only an AI guess based on the photo and text, and that it is NOT a medical diagnosis.
-   - Encourage the user to see a doctor or emergency service if the wound looks deep, infected (pus, spreading redness, fever), very painful, or if they are worried.
-   - For medicine strips: try to identify the medicine name, common use, and important precautions, but remind users to double-check the strip and consult a professional before taking anything.
-`
-        }]
-      };
-
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
-      const payload = {
-        contents,
-        tools: [{ google_search: {} }],
-        systemInstruction
-      };
-
-      // 1. Prepare and Save User Message to Firestore (text only)
+      // 1. Prepare User Message Object
       const userMessage = {
         role: 'user',
         text: newMessage,
@@ -1914,6 +1813,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         createdAt: Date.now()
       };
 
+      // 2. Save User Message to Firestore (Keep existing logic)
       if (db && userId) {
         try {
           const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
@@ -1923,33 +1823,41 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         }
       }
 
-      // Optimistic UI update: add user message immediately
+      // 3. Optimistic UI update (Show user message immediately)
       setChatHistory(prev => [...prev, userMessage]);
 
       try {
-        const res = await exponentialBackoffFetch(apiUrl, {
+        // --- NEW RAG BACKEND CALL ---
+        // We use the helper function getContextPayload() you added earlier
+        const payload = {
+          message: newMessage,
+          userId: userId,
+          metrics: getContextPayload(), 
+          chatHistory: chatHistory.slice(-5) // Send limited history for context
+        };
+
+        // Call the Vercel serverless function
+        const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const result = await res.json();
-        const candidate = result.candidates?.[0];
-        let modelText = "Sorry, I couldn't generate a response. Please check the console for API errors.";
 
-        if (candidate && candidate.content?.parts?.length) {
-          modelText = candidate.content.parts.map(p => p.text || '').join('\n\n');
-        } else if (result.error) {
-          modelText = `API Error: ${result.error.message}.`;
-        }
+        if (!res.ok) throw new Error("Backend error: " + res.statusText);
+        
+        const data = await res.json();
+        const modelText = data.text;
+        const sources = data.sources || []; 
+        // --- END BACKEND CALL ---
 
         const modelMessage = {
           role: 'model',
           text: modelText,
-          sources: [],
+          sources: sources, // Now populated by Pinecone/RAG!
           createdAt: Date.now()
         };
 
-        // 2. Save Model Response Message to Firestore
+        // 4. Save Model Response to Firestore
         if (db && userId) {
           try {
             const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
@@ -1959,20 +1867,25 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
           }
         }
 
-        // Optimistic UI update: add model message immediately
+        // 5. Update UI & Speak
         setChatHistory(prev => [...prev, modelMessage]);
 
-        // Speak response if enabled
         if (speechEnabled || isVoiceMode) {
           speakText(modelText);
         }
 
       } catch (e) {
         console.error("Chatbot API Error:", e);
-        setChatHistory(prev => [
-          ...prev,
-          { role: 'model', text: `Error fetching response: ${e.message}`, sources: [], createdAt: Date.now() }
-        ]);
+        
+        // Add error message to chat so user knows something failed
+        const errorMessage = { 
+            role: 'model', 
+            text: `Error fetching response: ${e.message}`, 
+            sources: [], 
+            createdAt: Date.now() 
+        };
+        setChatHistory(prev => [...prev, errorMessage]);
+
         if (isVoiceMode) {
           speakText("I'm sorry, I encountered an error. Please try again.");
         }
@@ -1980,7 +1893,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
         setIsChatLoading(false);
       }
     },
-    [isLocalRun, chatHistory, db, userId, speechEnabled, speakText, isVoiceMode]
+    // IMPORTANT: Updated dependencies to include all metric states used in getContextPayload
+    [isLocalRun, chatHistory, db, userId, speechEnabled, speakText, isVoiceMode, stepCount, sleepHours, heartRate, takenMedications]
   );
 
   // Auto-scroll to bottom of chat
@@ -3578,6 +3492,8 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
               setTheme={setTheme}
               colorBlindMode={colorBlindMode}
               setColorBlindMode={setColorBlindMode}
+              profile={profile}         // <--- ADD THIS
+              setProfile={setProfile}   // <--- ADD THIS (Required for editing to work)
             />
           </div>
 
