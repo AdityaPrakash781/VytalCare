@@ -187,7 +187,10 @@ const calculateAge = (dob) => {
   return age.toString();
 };
 
-const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode }) => {
+const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode,
+  profile = {},        // <-- add default
+  setProfile = () => {} // <-- add default
+ }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showColorBlindMenu, setShowColorBlindMenu] = useState(false);
  
