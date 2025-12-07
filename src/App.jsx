@@ -1798,6 +1798,17 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
   /** ---------------------------------------
  * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
  * -------------------------------------- */
+
+  // >> NEW: Helper for RAG Context <<
+const getContextPayload = () => {
+  return {
+    steps: stepCount,
+    sleep: sleepHours,
+    heartRate: heartRate,
+    takenMeds: Array.from(takenMedications), 
+    profile: profile 
+  };
+};
 /** ---------------------------------------
    * Chatbot API Call - UPDATED FOR RAG BACKEND
    * -------------------------------------- */

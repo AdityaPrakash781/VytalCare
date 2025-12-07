@@ -21,10 +21,9 @@ dotenv.config();
 // FIX 1: We add 'as any' to bypass the TypeScript check. 
 // The library doesn't know "text-embedding-004" exists yet, but the API accepts it.
 Settings.embedModel = new GeminiEmbedding({
-  model: "models/text-embedding-004" as any, 
+  model: "models/text-embedding-004" as any,
   apiKey: process.env.GOOGLE_API_KEY
 });
-
 // ---------- Load Documents ----------
 function loadDocuments(folder: string): Document[] {
   if (!fs.existsSync(folder)) {
@@ -55,11 +54,12 @@ async function indexData(folder: string, namespace: string) {
 
   // FIX 2: Removed 'db: pinecone'. 
   // Instead, we pass 'apiKey' directly. The store will create its own secure connection.
-  const vectorStore = new PineconeVectorStore({
-    indexName: process.env.PINECONE_INDEX_NAME!,
-    apiKey: process.env.PINECONE_API_KEY!,
-    namespace,
-  });
+  // FIX: Removed 'db', added 'apiKey'
+const vectorStore = new PineconeVectorStore({
+  indexName: process.env.PINECONE_INDEX_NAME!,
+  apiKey: process.env.PINECONE_API_KEY!,
+  namespace,
+});
 
   const storageContext = await storageContextFromDefaults({
     vectorStore,
