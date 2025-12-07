@@ -3002,7 +3002,7 @@ const handleCaptureFromCamera = () => {
     }
 
     return (
-      <div className="flex flex-col h-[70vh] p-6 animate-fade-in relative">
+      <div className="flex flex-col h-full min-h-[70vh] p-6 animate-fade-in relative">
         {/* Voice Mode Overlay */}
         {isVoiceMode && (
           <div className="absolute inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex flex-col items-center justify-center p-8 rounded-3xl animate-fade-in">
@@ -3543,7 +3543,7 @@ const handleCaptureFromCamera = () => {
 
         {renderError()}
 
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
+        <div className={`flex flex-col lg:flex-row gap-6 ${activeTab === 'chatbot' ? 'items-stretch' : 'items-start'}`}>
           {/* Left Sidebar - Profile */}
           <div className="w-full lg:w-80 flex-shrink-0 h-auto">
             <ProfileSection
@@ -3558,7 +3558,8 @@ const handleCaptureFromCamera = () => {
           </div>
 
           {/* Main Content */}
-          <div className="flex-grow bg-surface dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none min-h-[60vh] border border-slate-100 dark:border-slate-800 overflow-hidden">
+          {/* Main Content */}
+          <div className="flex-grow bg-surface dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none min-h-[80vh] border border-slate-100 dark:border-slate-800 overflow-hidden">
             {activeTab === 'reminders' && renderRemindersTab()}
             {activeTab === 'activity' && renderActivityTab()}
             {activeTab === 'chatbot' && renderChatbotTab()}
