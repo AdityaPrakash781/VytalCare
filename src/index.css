@@ -260,3 +260,59 @@ html.transitioning *::after {
   transition-duration: 0.2s !important;
   transition-timing-function: ease !important;
 }
+
+/* ============================
+   ECG PULSE ANIMATION
+   ============================ */
+@keyframes ecg-travel {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.header-line-pulse {
+  position: relative;
+  border-bottom: none !important;
+  overflow: hidden;
+  /* Ensure pulse doesn't spill */
+}
+
+.header-line-pulse::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  /* Slightly thicker for visibility */
+
+  /* The Gradient: Glowing Dot
+     A narrow, bright concentration of light traveling across */
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(15, 118, 110, 0) 45%,
+      rgba(15, 118, 110, 0.5) 49%,
+      rgba(15, 118, 110, 1) 50%,
+      rgba(15, 118, 110, 0.5) 51%,
+      rgba(15, 118, 110, 0) 55%,
+      transparent 100%);
+
+  background-size: 200% 100%;
+  animation: ecg-travel 10s linear infinite;
+}
+
+[data-theme="dark"] .header-line-pulse::after {
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(47, 123, 120, 0) 45%,
+      rgba(47, 123, 120, 0.5) 49%,
+      rgba(47, 123, 120, 1) 50%,
+      rgba(47, 123, 120, 0.5) 51%,
+      rgba(47, 123, 120, 0) 55%,
+      transparent 100%);
+  background-size: 200% 100%;
+}

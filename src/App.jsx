@@ -175,6 +175,18 @@ const HealthScoreRing = ({ score, size = 180 }) => {
 /** ---------------------------------------
  * Profile Section Component (UPDATED)
  * -------------------------------------- */
+const calculateAge = (dob) => {
+  if (!dob) return '';
+  const birthDate = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age.toString();
+};
+
 const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showColorBlindMenu, setShowColorBlindMenu] = useState(false);
@@ -182,6 +194,7 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
     userName: '',
     userPhone: '',
     userEmail: '',
+    userDob: '', // Date of Birth field for age calculation
     userSex: '',
     userAge: '',
     userHeight: '',
@@ -201,7 +214,15 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
 
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
-        setProfile(prev => ({ ...prev, ...docSnap.data() }));
+        const data = docSnap.data();
+        // Auto-update age if DOB exists
+        if (data.userDob) {
+          const currentAge = calculateAge(data.userDob);
+          if (currentAge !== data.userAge) {
+            data.userAge = currentAge;
+          }
+        }
+        setProfile(prev => ({ ...prev, ...data }));
       }
       setLoading(false);
     });
@@ -228,7 +249,14 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setProfile(prev => ({ ...prev, [name]: value }));
+    setProfile(prev => {
+      const updated = { ...prev, [name]: value };
+      // Auto-calculate age if DOB changes
+      if (name === 'userDob') {
+        updated.userAge = calculateAge(value);
+      }
+      return updated;
+    });
   };
 
   if (loading) return <div className="p-4"><LoadingSpinner /></div>;
@@ -258,8 +286,9 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
           <InputField label="Phone No" name="userPhone" type="tel" placeholder="+1 234 567 890" isEditing={isEditing} profile={profile} handleChange={handleChange} />
           <InputField label="Email ID" name="userEmail" type="email" placeholder="john@example.com" isEditing={isEditing} profile={profile} handleChange={handleChange} />
           <div className="grid grid-cols-2 gap-4">
-            <InputField label="Sex" name="userSex" placeholder="M/F" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+            <InputField label="Date of Birth" name="userDob" type="date" placeholder="YYYY-MM-DD" isEditing={isEditing} profile={profile} handleChange={handleChange} />
             <InputField label="Age" name="userAge" type="number" placeholder="30" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+            <InputField label="Sex" name="userSex" placeholder="M/F" isEditing={isEditing} profile={profile} handleChange={handleChange} />
             <InputField label="Height" name="userHeight" placeholder="175 cm" isEditing={isEditing} profile={profile} handleChange={handleChange} />
             <InputField label="Weight" name="userWeight" placeholder="70 kg" isEditing={isEditing} profile={profile} handleChange={handleChange} />
           </div>
@@ -703,7 +732,7 @@ const App = () => {
       setMedications(meds);
     }, (error) => {
       console.error("Error fetching medications:", error);
-      if (auth?.currentUser) setError("Failed to fetch medications.");
+      if (auth?.currentUser) { /* setError("Failed to fetch medications."); */ }
     });
     return () => unsubscribe();
   }, [db, userId, auth]);
@@ -748,7 +777,7 @@ const App = () => {
       }
     }, (error) => {
       console.error("Failed to fetch chat history:", error);
-      if (auth?.currentUser) setError("Failed to fetch chat history.");
+      if (auth?.currentUser) { /* setError("Failed to fetch chat history."); */ }
     });
 
     return () => unsubscribe();
@@ -963,7 +992,7 @@ const App = () => {
       }, { merge: true });
     } catch (e) {
       console.error("Error updating hydration:", e);
-      setError("Failed to update hydration.");
+      // setError("Failed to update hydration.");
       setHydration(hydration); // Revert on error
     }
   };
@@ -1054,7 +1083,7 @@ const App = () => {
       const state = params['state'];
       if (accessToken && state === 'google-fit-connect') {
         setGoogleAccessToken(accessToken);
-        setError({ type: 'success', message: 'Signed in with Google and connected to Fit successfully! Welcome.' });
+        // setError({ type: 'success', message: 'Signed in with Google and connected to Fit successfully! Welcome.' });
         window.history.replaceState({}, document.title, window.location.pathname);
         setActiveTab('activity');
       }
@@ -1082,7 +1111,7 @@ const App = () => {
   // ... (fetchSteps, fetchSleep, fetchCalories, fetchDistance, fetchHeartRate, syncAll unchanged) ...
 
   const fetchSteps = useCallback(async () => {
-    if (!googleAccessToken) { setError('Error: Google Fit Access Token is missing. Please sign in again.'); return 0; }
+    if (!googleAccessToken) { /* setError('Error: Google Fit Access Token is missing. Please sign in again.'); */ return 0; }
     setIsStepsLoading(true);
     const { startTimeMillis, endTimeMillis } = getTodayWindow();
     const body = {
@@ -1107,13 +1136,13 @@ const App = () => {
         return steps;
       } else {
         setStepCount(0);
-        setError('No step data found for today.');
+        // setError('No step data found for today.');
         return 0;
       }
     } catch (e) {
       console.error(e);
       setStepCount(0);
-      setError('Failed to fetch steps.');
+      // setError('Failed to fetch steps.');
       return 0;
     } finally {
       setIsStepsLoading(false);
@@ -1234,7 +1263,7 @@ const App = () => {
 
 
   const fetchSleep = useCallback(async () => {
-    if (!googleAccessToken) { setError('Error: Google Fit Access Token is missing. Please sign in again.'); return 0; }
+    if (!googleAccessToken) { /* setError('Error: Google Fit Access Token is missing. Please sign in again.'); */ return 0; }
     setIsSleepLoading(true);
     const now = Date.now();
     const startTimeIso = new Date(now - 36 * 60 * 60 * 1000).toISOString();
@@ -1249,7 +1278,7 @@ const App = () => {
       const sleepSessions = data.session || [];
       if (!sleepSessions.length) {
         setSleepHours(0);
-        setError('No sleep data found for the past 36 hours.');
+        // setError('No sleep data found for the past 36 hours.');
         return 0;
       }
       const oneDayMs = 24 * 60 * 60 * 1000;
@@ -1265,7 +1294,7 @@ const App = () => {
     } catch (e) {
       console.error(e);
       setSleepHours(0);
-      setError('Failed to fetch sleep data.');
+      // setError('Failed to fetch sleep data.');
       return 0;
     } finally {
       setIsSleepLoading(false);
@@ -1359,13 +1388,13 @@ const App = () => {
         return kcal;
       } else {
         setCalories(0);
-        setError('No calories data found for today.');
+        // setError('No calories data found for today.');
         return 0;
       }
     } catch (e) {
       console.error(e);
       setCalories(0);
-      setError('Failed to fetch calories.');
+      // setError('Failed to fetch calories.');
       return 0;
     } finally {
       setIsCaloriesLoading(false);
@@ -1374,7 +1403,7 @@ const App = () => {
 
   // Distance (merged source) — fixes “0 km” mismatch
   const fetchDistance = useCallback(async () => {
-    if (!googleAccessToken) { setError('Error: Google Fit Access Token is missing. Please sign in again.'); return 0; }
+    if (!googleAccessToken) { /* setError('Error: Google Fit Access Token is missing. Please sign in again.'); */ return 0; }
     setIsDistanceLoading(true);
     const { startTimeMillis, endTimeMillis } = getTodayWindow();
     const body = {
@@ -1430,7 +1459,7 @@ const App = () => {
       if (e.message.includes('403')) {
         setError('Permission denied for distance. Please sign out and sign in again to grant location access.');
       } else {
-        setError('Failed to fetch distance.');
+        // setError('Failed to fetch distance.');
       }
       return 0;
     } finally {
@@ -1440,7 +1469,7 @@ const App = () => {
 
   // Heart rate — return latest sample seen in last 24h or show “no data” message
   const fetchHeartRate = useCallback(async () => {
-    if (!googleAccessToken) { setError('Error: Google Fit Access Token is missing. Please sign in again.'); return null; }
+    if (!googleAccessToken) { /* setError('Error: Google Fit Access Token is missing. Please sign in again.'); */ return null; }
     setIsHeartRateLoading(true);
     const now = Date.now();
     const startTimeMillis = now - 24 * 60 * 60 * 1000;
@@ -1494,13 +1523,13 @@ const App = () => {
         return latestBpm;
       } else {
         setHeartRate(null);
-        setError('No heart-rate data found in the last 24 hours (wearable not connected).');
+        // setError('No heart-rate data found in the last 24 hours (wearable not connected).');
         return null;
       }
     } catch (e) {
       console.error(e);
       setHeartRate(null);
-      setError('Failed to fetch heart-rate.');
+      // setError('Failed to fetch heart-rate.');
       return null;
     } finally {
       setIsHeartRateLoading(false);
@@ -1676,9 +1705,9 @@ const App = () => {
         (heartRate ?? null) !== null;
 
       if (!someData) {
-        setError('Synced, but no metrics were available for today. Open Google Fit and sync your device, then try again.');
+        // setError('Synced, but no metrics were available for today. Open Google Fit and sync your device, then try again.');
       } else {
-        setError({ type: 'success', message: 'Synced today’s data successfully.' });
+        // setError({ type: 'success', message: 'Synced today’s data successfully.' });
         calculateHealthScore();
       }
 
@@ -1802,9 +1831,9 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
   /** ---------------------------------------
    * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE
    * -------------------------------------- */
-    /** ---------------------------------------
-   * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
-   * -------------------------------------- */
+  /** ---------------------------------------
+ * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
+ * -------------------------------------- */
   const callChatbotAPI = useCallback(
     async (newMessage, imageInlineData = null) => {
       const apiKey = isLocalRun ? GEMINI_API_KEY : "";
@@ -1955,7 +1984,7 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
   );
 
   // Auto-scroll to bottom of chat
-    // Auto-scroll to bottom of chat + file input ref
+  // Auto-scroll to bottom of chat + file input ref
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null); // NEW: hidden file input for image upload
   const cameraInputRef = useRef(null); // NEW: hidden file input for taking a photo
@@ -1983,69 +2012,69 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
     setAttachedImage(file);
   };
 
-// ===== CAMERA HELPERS =====
-const startCamera = async () => {
-  try {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert("Camera is not supported in this browser.");
+  // ===== CAMERA HELPERS =====
+  const startCamera = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Camera is not supported in this browser.");
+        setIsCameraModalOpen(false);
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" }, // back camera on phones, normal cam on laptop
+        audio: false
+      });
+
+      if (videoReff.current) {
+        videoReff.current.srcObject = stream;
+      }
+      setCameraStream(stream);
+    } catch (err) {
+      console.error("Error starting camera:", err);
+      alert("Could not access the camera. Check permissions and try again.");
       setIsCameraModalOpen(false);
-      return;
     }
+  };
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" }, // back camera on phones, normal cam on laptop
-      audio: false
-    });
-
-    if (videoReff.current) {
-      videoReff.current.srcObject = stream;
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
     }
-    setCameraStream(stream);
-  } catch (err) {
-    console.error("Error starting camera:", err);
-    alert("Could not access the camera. Check permissions and try again.");
-    setIsCameraModalOpen(false);
-  }
-};
+  };
 
-const stopCamera = () => {
-  if (cameraStream) {
-    cameraStream.getTracks().forEach(track => track.stop());
-    setCameraStream(null);
-  }
-};
+  // When the modal opens/closes, start/stop the camera
+  useEffect(() => {
+    if (isCameraModalOpen) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCameraModalOpen]);
 
-// When the modal opens/closes, start/stop the camera
-useEffect(() => {
-  if (isCameraModalOpen) {
-    startCamera();
-  } else {
-    stopCamera();
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [isCameraModalOpen]);
+  const handleCaptureFromCamera = () => {
+    const video = videoReff.current;
+    const canvas = canvasReff.current;
+    if (!video || !canvas) return;
 
-const handleCaptureFromCamera = () => {
-  const video = videoReff.current;
-  const canvas = canvasReff.current;
-  if (!video || !canvas) return;
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
 
-  const width = video.videoWidth || 640;
-  const height = video.videoHeight || 480;
+    canvas.width = width;
+    canvas.height = height;
 
-  canvas.width = width;
-  canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, width, height);
 
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(video, 0, 0, width, height);
-
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
-    setAttachedImage(file);      // same state you use for uploaded images
-    setIsCameraModalOpen(false); // close modal
-  }, "image/jpeg", 0.9);
-};
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
+      setAttachedImage(file);      // same state you use for uploaded images
+      setIsCameraModalOpen(false); // close modal
+    }, "image/jpeg", 0.9);
+  };
 
 
   const handleClearChat = () => {
@@ -3037,7 +3066,7 @@ const handleCaptureFromCamera = () => {
           </div>
         )}
 
-                        <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-700 mb-4">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-100 dark:border-slate-700 mb-4">
           {/* Left: Title + Voice/Language controls */}
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
@@ -3050,11 +3079,10 @@ const handleCaptureFromCamera = () => {
               {/* Voice Mode Toggle */}
               <button
                 onClick={isVoiceMode ? stopVoiceMode : startVoiceMode}
-                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-all text-xs font-semibold ${
-                  isVoiceMode
-                    ? 'bg-red-500 text-white shadow-sm animate-pulse'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
-                }`}
+                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md transition-all text-xs font-semibold ${isVoiceMode
+                  ? 'bg-red-500 text-white shadow-sm animate-pulse'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+                  }`}
                 title={isVoiceMode ? "Exit Voice Mode" : "Start Voice Conversation"}
               >
                 {isVoiceMode ? <MicOff size={14} /> : <Mic size={14} />}
@@ -3069,11 +3097,10 @@ const handleCaptureFromCamera = () => {
                   setSpeechEnabled(!speechEnabled);
                   if (speechEnabled) stopSpeaking();
                 }}
-                className={`p-1.5 rounded-md transition-all ${
-                  speechEnabled
-                    ? 'bg-primary text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
-                }`}
+                className={`p-1.5 rounded-md transition-all ${speechEnabled
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                  }`}
                 title={speechEnabled ? "Disable Text-to-Speech" : "Enable Text-to-Speech"}
               >
                 {speechEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
@@ -3096,11 +3123,10 @@ const handleCaptureFromCamera = () => {
                     <button
                       key={lang.code}
                       onClick={() => setSelectedLanguage(lang.code)}
-                      className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${
-                        selectedLanguage === lang.code
-                          ? 'text-primary font-bold bg-primary/5'
-                          : 'text-slate-600 dark:text-slate-300'
-                      }`}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${selectedLanguage === lang.code
+                        ? 'text-primary font-bold bg-primary/5'
+                        : 'text-slate-600 dark:text-slate-300'
+                        }`}
                     >
                       {lang.name}
                     </button>
@@ -3162,7 +3188,7 @@ const handleCaptureFromCamera = () => {
           <div ref={chatEndRef} />
         </div>
 
-                <form
+        <form
           onSubmit={(e) => {
             e.preventDefault();
             const trimmed = chatInput.trim();
@@ -3233,11 +3259,10 @@ const handleCaptureFromCamera = () => {
             <button
               type="button"
               onClick={toggleListening}
-              className={`absolute left-2 top-2 bottom-2 w-10 flex items-center justify-center rounded-xl transition-all duration-200 ${
-                isListening
-                  ? 'bg-red-500 text-white animate-pulse shadow-md'
-                  : 'text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
+              className={`absolute left-2 top-2 bottom-2 w-10 flex items-center justify-center rounded-xl transition-all duration-200 ${isListening
+                ? 'bg-red-500 text-white animate-pulse shadow-md'
+                : 'text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
               title={isListening ? "Stop Listening" : "Start Voice Input"}
             >
               {isListening ? <MicOff size={20} /> : <Mic size={20} />}
@@ -3247,21 +3272,21 @@ const handleCaptureFromCamera = () => {
             <input
               type="file"
               accept="image/*"
-              capture="environment" 
+              capture="environment"
               ref={fileInputRef}
               className="hidden"
               onChange={handleFileChange}
             />
 
             {/* Hidden file input for camera */}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                ref={cameraInputRef}
-                className="hidden"
-                onChange={handleFileChange}
-              />
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              ref={cameraInputRef}
+              className="hidden"
+              onChange={handleFileChange}
+            />
 
             {/* Text input */}
             <input
@@ -3273,11 +3298,10 @@ const handleCaptureFromCamera = () => {
                   ? "Listening..."
                   : "Ask a health question or upload a photo"
               }
-              className={`w-full p-4 pl-14 pr-32 border rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm ${
-                isListening
-                  ? 'border-red-300 bg-red-50/50 dark:bg-red-900/20'
-                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
-              }`}
+              className={`w-full p-4 pl-14 pr-32 border rounded-2xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm ${isListening
+                ? 'border-red-300 bg-red-50/50 dark:bg-red-900/20'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'
+                }`}
             />
 
             {/* Right-side buttons (attach + send) */}
@@ -3293,40 +3317,39 @@ const handleCaptureFromCamera = () => {
               </button>
 
               {showAttachMenu && (
-                  <div className="absolute right-12 top-0 mt-1 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-50 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAttachMenu(false);
-                        if (fileInputRef.current) fileInputRef.current.click(); // open file browser
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-t-xl"
-                    >
-                      Upload from computer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAttachMenu(false);
-                        setIsCameraModalOpen(true);   
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-b-xl border-t border-slate-100 dark:border-slate-700"
-                    >
-                      Take a photo
-                    </button>
-                  </div>
-                )}
+                <div className="absolute right-12 top-0 mt-1 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-50 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAttachMenu(false);
+                      if (fileInputRef.current) fileInputRef.current.click(); // open file browser
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-t-xl"
+                  >
+                    Upload from computer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAttachMenu(false);
+                      setIsCameraModalOpen(true);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-b-xl border-t border-slate-100 dark:border-slate-700"
+                  >
+                    Take a photo
+                  </button>
+                </div>
+              )}
 
 
               {/* Send button */}
               <button
                 type="submit"
                 disabled={(!chatInput.trim() && !attachedImage) || isChatLoading}
-                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${
-                  (!chatInput.trim() && !attachedImage) || isChatLoading
-                    ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
-                    : 'bg-primary text-white shadow-md hover:shadow-lg hover:-translate-y-0.5'
-                }`}
+                className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 ${(!chatInput.trim() && !attachedImage) || isChatLoading
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                  : 'bg-primary text-white shadow-md hover:shadow-lg hover:-translate-y-0.5'
+                  }`}
               >
                 {isChatLoading ? (
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -3337,7 +3360,7 @@ const handleCaptureFromCamera = () => {
             </div>
           </div>
         </form>
-                {isCameraModalOpen && (
+        {isCameraModalOpen && (
           <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3">
               <h3 className="text-sm font-semibold text-text-main dark:text-slate-100 mb-1">
@@ -3360,9 +3383,10 @@ const handleCaptureFromCamera = () => {
               <div className="flex justify-end gap-2 mt-2">
                 <button
                   type="button"
-                  onClick= {() => {
-                  stopCamera();
-                  setIsCameraModalOpen(false); }}
+                  onClick={() => {
+                    stopCamera();
+                    setIsCameraModalOpen(false);
+                  }}
                   className="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
                 >
                   Cancel
@@ -3492,7 +3516,7 @@ const handleCaptureFromCamera = () => {
       <ColorBlindFilters />
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-6 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-6 border-b border-slate-200 dark:border-slate-700 header-line-pulse">
           <div className="flex items-center mb-4 md:mb-0">
             <div className="w-25 h-25 rounded-xl flex items-center justify-center mr-3">
               <img
