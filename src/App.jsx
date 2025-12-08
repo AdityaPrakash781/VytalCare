@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 // >> IMPORTED: orderBy, limit, where <<
-import { getFirestore, collection, query, onSnapshot, addDoc, doc, deleteDoc, orderBy, limit, setDoc, writeBatch, getDocs, where } from 'firebase/firestore';
+import { getFirestore, collection, query, onSnapshot, addDoc, doc, deleteDoc, orderBy, limit, setDoc, writeBatch, getDocs, where, updateDoc } from 'firebase/firestore';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Legend, Area
@@ -11,7 +11,7 @@ import appIcon from "./assets/iconn.png";
 
 
 
-import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info, Mic, MicOff, Volume2, VolumeX, Globe, Paperclip } from 'lucide-react';
+import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info, Mic, MicOff, Volume2, VolumeX, Globe, Paperclip, RefreshCw } from 'lucide-react';
 
 /** ---------------------------------------
  * App Config (unchanged)
@@ -187,15 +187,63 @@ const calculateAge = (dob) => {
   return age.toString();
 };
 
-const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode,
-  profile = {},        // <-- add default
-  setProfile = () => {} // <-- add default
- }) => {
+const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode, onCaregiverChange }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showColorBlindMenu, setShowColorBlindMenu] = useState(false);
- 
+  const [profile, setProfile] = useState({
+    userName: '',
+    userPhone: '',
+    userEmail: '',
+    userDob: '', // Date of Birth field for age calculation
+    userSex: '',
+    userAge: '',
+    userHeight: '',
+    userWeight: '',
+    caregiverName: '',
+    caregiverPhone: '',
+    caregiverEmail: ''
+  });
+  const [loading, setLoading] = useState(true);
 
- 
+  // CHANGED: Read directly from users/{userId}
+  useEffect(() => {
+    if (!db || !userId) return;
+    // Old Path: .../users/${userId}/profile/data
+    // New Path: .../users/${userId}
+    const docRef = doc(db, `/artifacts/${appId}/users/${userId}`);
+
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+
+        // Auto-update age if DOB exists
+        if (data.userDob) {
+          const currentAge = calculateAge(data.userDob);
+          if (currentAge !== data.userAge) {
+            data.userAge = currentAge;
+          }
+        }
+
+        // Update local profile state
+        setProfile(prev => ({ ...prev, ...data }));
+
+        // ✅ ALSO push caregiver info up to App on initial load
+        if (onCaregiverChange) {
+          onCaregiverChange(
+            data.caregiverPhone || '',
+            data.caregiverName || ''
+          );
+        }
+      } else if (onCaregiverChange) {
+        // No profile → clear caregiver contact in App
+        onCaregiverChange('', '');
+      }
+
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [db, userId, appId, onCaregiverChange]);
+
   // CHANGED: Write directly to users/{userId}
   const handleSave = async () => {
     if (!db || !userId) return;
@@ -218,15 +266,24 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
     const { name, value } = e.target;
     setProfile(prev => {
       const updated = { ...prev, [name]: value };
+
       // Auto-calculate age if DOB changes
       if (name === 'userDob') {
         updated.userAge = calculateAge(value);
       }
+
+      // ✅ Whenever caregiver phone or name changes, inform parent (App)
+      if (onCaregiverChange && (name === 'caregiverPhone' || name === 'caregiverName')) {
+        const phone = name === 'caregiverPhone' ? value : updated.caregiverPhone;
+        const careName = name === 'caregiverName' ? value : updated.caregiverName;
+        onCaregiverChange(phone || '', careName || '');
+      }
+
       return updated;
     });
   };
 
-  if (!profile) return <div className="p-4"><LoadingSpinner /></div>;
+  if (loading) return <div className="p-4"><LoadingSpinner /></div>;
 
   return (
     <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
@@ -417,10 +474,14 @@ const LoginPage = ({ handleLogin, error }) => (
 /** ---------------------------------------
  * Networking helper (unchanged)
  * -------------------------------------- */
-const exponentialBackoffFetch = async (url, options, maxRetries = 3) => {
+const exponentialBackoffFetch = async (url, options, maxRetries = 3, timeout = 15000) => {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const response = await fetch(url, options);
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+
       if (!response.ok) {
         if (response.status === 429 && i < maxRetries - 1) {
           const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
@@ -482,15 +543,37 @@ const App = () => {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
-  // >> NEW: Profile State <<
-  const [profile, setProfile] = useState({
-     userName: '',
-     userAge: '',
-     conditions: ''
-  });
   const [medications, setMedications] = useState([]);
   const [newMedication, setNewMedication] = useState({ name: '', dose: '', times: ['08:00'] });
   const [isAdding, setIsAdding] = useState(false);
+  const [editingMedId, setEditingMedId] = useState(null);
+
+  // Caregiver contact (used in Emergency tab)
+  const [caregiverContact, setCaregiverContact] = useState({
+    phone: '',
+    name: ''
+  });
+
+  const handleCaregiverChange = useCallback((phone, name) => {
+    setCaregiverContact({ phone, name });
+  }, []);
+
+  // Extra emergency contacts (user-added in Emergency tab)
+  const [emergencyContacts, setEmergencyContacts] = useState([]);
+  const [isEditingEmergency, setIsEditingEmergency] = useState(false);
+  const [newEmergencyContact, setNewEmergencyContact] = useState({
+    name: '',
+    number: ''
+  });
+
+
+  // Prescription → auto-fill meds
+  const [isPrescriptionScanning, setIsPrescriptionScanning] = useState(false);
+  const [prescriptionImage, setPrescriptionImage] = useState(null);
+  const prescriptionFileInputRef = useRef(null);
+  // Small dropdown for "Upload / Take photo" in meds form
+  const [showPrescriptionAttachMenu, setShowPrescriptionAttachMenu] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('reminders');
@@ -695,17 +778,7 @@ const App = () => {
   /** ----------------------------
    * Firestore Listeners
    * --------------------------- */
-// >> NEW: Profile Listener <<
-  useEffect(() => {
-    if (!db || !userId) return;
-    const docRef = doc(db, `/artifacts/${appId}/users/${userId}`);
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setProfile(prev => ({ ...prev, ...docSnap.data() }));
-      }
-    }, (error) => console.error("Error fetching profile:", error));
-    return () => unsubscribe();
-  }, [db, userId, appId]);
+
   // 1. Medication Listener
   useEffect(() => {
     if (!db || !userId) return;
@@ -743,28 +816,73 @@ const App = () => {
   // 2. Chat History Listener
   useEffect(() => {
     if (!db || !userId) return;
-    const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-    // Filter messages created after the last clear time
+
+    const chatCollectionRef = collection(
+      db,
+      `/artifacts/${appId}/users/${userId}/chats`
+    );
+
     const qChat = query(
       chatCollectionRef,
       orderBy('createdAt', 'asc'),
       limit(100)
     );
 
-    const unsubscribe = onSnapshot(qChat, (snapshot) => {
-      const chatMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (chatMessages.length > 0) {
-        setChatHistory(chatMessages);
-      } else {
-        setChatHistory([INITIAL_CHAT_WELCOME]);
+    const unsubscribe = onSnapshot(
+      qChat,
+      (snapshot) => {
+        const chatMessages = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+
+        if (chatMessages.length > 0) {
+          setChatHistory(chatMessages);
+        } else {
+          setChatHistory([INITIAL_CHAT_WELCOME]);
+        }
+      },
+      (error) => {
+        console.error('Failed to fetch chat history:', error);
+        if (auth?.currentUser) {
+          // optional: setError("Failed to fetch chat history.");
+        }
       }
-    }, (error) => {
-      console.error("Failed to fetch chat history:", error);
-      if (auth?.currentUser) { /* setError("Failed to fetch chat history."); */ }
-    });
+    );
 
     return () => unsubscribe();
   }, [db, userId, auth]);
+
+  // 3. Emergency Contacts Listener
+  useEffect(() => {
+    if (!db || !userId) return;
+
+    const contactsRef = collection(
+      db,
+      `/artifacts/${appId}/users/${userId}/emergency_contacts`
+    );
+
+    const unsubscribe = onSnapshot(
+      contactsRef,
+      (snapshot) => {
+        const loaded = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() || {};
+          return {
+            id: docSnap.id,
+            name: data.name || '',
+            number: data.number || '',
+          };
+        });
+        setEmergencyContacts(loaded);
+      },
+      (error) => {
+        console.error('Error fetching emergency contacts:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [db, userId]);
+
 
   // >> VOICE FEATURES <<
   const [isListening, setIsListening] = useState(false);
@@ -784,6 +902,10 @@ const App = () => {
     { code: 'te-IN', name: 'Telugu', voice: 'Google తెలుగు' },
   ];
 
+  // Ref to access latest callChatbotAPI inside useEffect without dependencies
+  const callChatbotApiRef = useRef(null);
+
+
   // Initialize Speech Recognition
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -799,11 +921,10 @@ const App = () => {
 
         // If in Voice Mode, automatically send the message
         if (isVoiceMode) {
-          // We need to trigger the send logic. 
-          // Since callChatbotAPI is a function, we can call it directly.
-          // However, we need to ensure chatInput state is updated first.
-          // Actually, using the transcript directly is safer here to avoid state race conditions.
-          callChatbotAPI(transcript);
+          // Use ref to avoid stale closure
+          if (callChatbotApiRef.current) {
+            callChatbotApiRef.current(transcript);
+          }
           setChatInput(''); // Clear input after sending
         }
       };
@@ -858,8 +979,32 @@ const App = () => {
     setIsSpeaking(false);
   };
 
+  const resetVoiceMode = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setIsChatLoading(false);
+    recognitionRef.current?.stop();
+    setTimeout(() => {
+      try {
+        recognitionRef.current?.start();
+        setIsListening(true);
+      } catch (e) {
+        console.error("Reset failed:", e);
+      }
+    }, 300);
+  };
+
   const speakText = (text) => {
-    if ((!speechEnabled && !isVoiceMode) || !text) return;
+    if ((!speechEnabled && !isVoiceMode) || !text) {
+      // If voice mode is on but speech is disabled/empty, we must still loop back to listening!
+      if (isVoiceMode) {
+        setTimeout(() => {
+          recognitionRef.current?.start();
+          setIsListening(true);
+        }, 500);
+      }
+      return;
+    }
 
     // Cancel current speech
     window.speechSynthesis.cancel();
@@ -880,32 +1025,56 @@ const App = () => {
     }
     if (voice) utterance.voice = voice;
 
-    utterance.onstart = () => setIsSpeaking(true);
+    // Safety timeout: If speech doesn't start in 3s, assume it failed and go back to listening
+    const safetyTimeout = setTimeout(() => {
+      if (!window.speechSynthesis.speaking) {
+        console.warn("Speech synthesis timed out or failed to start.");
+        setIsSpeaking(false);
+        if (isVoiceMode) {
+          recognitionRef.current?.start();
+          setIsListening(true);
+        }
+      }
+    }, 3000);
+
+    utterance.onstart = () => {
+      clearTimeout(safetyTimeout);
+      setIsSpeaking(true);
+    };
 
     utterance.onend = () => {
+      clearTimeout(safetyTimeout);
       setIsSpeaking(false);
       // Continuous Loop: If in Voice Mode, start listening again after speaking
       if (isVoiceMode) {
         setTimeout(() => {
-          recognitionRef.current?.start();
-          setIsListening(true);
+          try {
+            recognitionRef.current?.start();
+            setIsListening(true);
+          } catch (e) {
+            console.error("Failed to restart listening:", e);
+            setIsVoiceMode(false); // Exit voice mode on critical error
+          }
         }, 500); // Small delay for natural pause
       }
     };
 
     utterance.onerror = (event) => {
+      clearTimeout(safetyTimeout);
       console.error("Speech synthesis error", event);
       setIsSpeaking(false);
       // Even on error, try to continue the loop if in voice mode
       if (isVoiceMode) {
         setTimeout(() => {
-          recognitionRef.current?.start();
-          setIsListening(true);
+          try {
+            recognitionRef.current?.start();
+            setIsListening(true);
+          } catch (e) {
+            setIsVoiceMode(false);
+          }
         }, 1000);
       }
     };
-
-
 
     window.speechSynthesis.speak(utterance);
   };
@@ -921,6 +1090,28 @@ const App = () => {
       window.speechSynthesis.cancel();
     };
   }, []);
+
+  // Watchdog: If in voice mode but stuck in "Processing" (neither listening nor speaking) for > 8s, force restart listening
+  useEffect(() => {
+    let watchdogTimer;
+    if (isVoiceMode && !isListening && !isSpeaking) {
+      console.log("Voice Mode Watchdog: Monitoring for stuck state...");
+      watchdogTimer = setTimeout(() => {
+        console.warn("Voice Mode Watchdog: Stuck in processing for 8s. Forcing restart.");
+        // Force restart
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+        try {
+          recognitionRef.current?.start();
+          setIsListening(true);
+        } catch (e) {
+          console.error("Watchdog restart failed:", e);
+          setIsVoiceMode(false);
+        }
+      }, 8000); // 8 seconds timeout
+    }
+    return () => clearTimeout(watchdogTimer);
+  }, [isVoiceMode, isListening, isSpeaking]);
 
 
   // 3. Hydration Listener
@@ -1817,26 +2008,90 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
   /** ---------------------------------------
  * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
  * -------------------------------------- */
-
-  // >> NEW: Helper for RAG Context <<
-const getContextPayload = () => {
-  return {
-    steps: stepCount,
-    sleep: sleepHours,
-    heartRate: heartRate,
-    takenMeds: Array.from(takenMedications), 
-    profile: profile 
-  };
-};
-
-/** ---------------------------------------
-   * Chatbot API Call - UPDATED FOR RAG BACKEND
-   * -------------------------------------- */
   const callChatbotAPI = useCallback(
     async (newMessage, imageInlineData = null) => {
+      const apiKey = isLocalRun ? GEMINI_API_KEY : "";
+      if (!apiKey) {
+        setError("GEMINI API ERROR: Missing API Key in local run. Cannot chat.");
+        return;
+      }
       setIsChatLoading(true);
 
-      // 1. Prepare User Message Object
+      // Failsafe: If API hangs for 20s, force stop loading
+      setTimeout(() => {
+        setIsChatLoading(prev => {
+          if (prev) {
+            console.warn("API Call Failsafe: Force stopping loading state after 20s");
+            return false;
+          }
+          return prev;
+        });
+      }, 20000);
+
+      // Prepare history for API call (limit and convert format)
+      const contents = [
+        ...chatHistory,
+        { role: 'user', text: newMessage, imageInlineData }
+      ]
+        .slice(-10) // Keep the last 10 messages for context
+        .map(msg => {
+          const parts = [];
+          if (msg.text) {
+            parts.push({ text: msg.text });
+          }
+          if (msg.imageInlineData) {
+            parts.push({ inlineData: msg.imageInlineData });
+          }
+          return {
+            role: msg.role === 'model' ? 'model' : 'user',
+            parts
+          };
+        });
+
+      const systemInstruction = {
+        parts: [{
+          text: `
+You are a helpful and professional Health Navigator chatbot of VytalCare.
+
+1. You are in a single continuous chat session.
+   - The "contents" you receive include the full recent conversation history.
+   - You MUST use that history for context when answering.
+
+2. MEMORY / CONTEXT BEHAVIOUR (VERY IMPORTANT):
+   - You CAN remember and refer to information the user told you earlier in THIS conversation.
+   - This includes their name, age, conditions they mention, medications, and other details.
+   - If the user asks things like "What is my name?" or "What did I just tell you?", answer using the information from earlier messages in this chat.
+   - DO NOT say that you "cannot retain personal information", that "each interaction is fresh", or that you "do not remember previous messages". Within this chat, you DO have access to prior messages through the provided contents.
+
+3. PRIVACY:
+   - Do NOT invent or assume any personal details that were not explicitly given in the conversation.
+   - Only use what is present in the chat history.
+
+4. MEDICAL BEHAVIOUR:
+   - Provide general, non-diagnostic information on medications, conditions, and health topics.
+   - Always clearly state that your guidance is NOT a substitute for professional medical consultation and is for general information only.
+   - Use Google Search (when available as a tool) for up-to-date medical and health context when needed.
+
+5. IMAGE & PHOTO CLARITY (VERY IMPORTANT):
+   - Users may send photos of wounds, rashes, skin issues, or medicine strips.
+   - FIRST, briefly describe what you see in the image in simple language.
+   - THEN, explain what it *could* be, giving a few possible explanations instead of a single diagnosis.
+   - Clearly state that this is only an AI guess based on the photo and text, and that it is NOT a medical diagnosis.
+   - Encourage the user to see a doctor or emergency service if the wound looks deep, infected (pus, spreading redness, fever), very painful, or if they are worried.
+   - For medicine strips: try to identify the medicine name, common use, and important precautions, but remind users to double-check the strip and consult a professional before taking anything.
+`
+        }]
+      };
+
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+      const payload = {
+        contents,
+        tools: [{ google_search: {} }],
+        systemInstruction
+      };
+
+      // 1. Prepare and Save User Message to Firestore (text only)
       const userMessage = {
         role: 'user',
         text: newMessage,
@@ -1844,7 +2099,6 @@ const getContextPayload = () => {
         createdAt: Date.now()
       };
 
-      // 2. Save User Message to Firestore (Keep existing logic)
       if (db && userId) {
         try {
           const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
@@ -1854,41 +2108,30 @@ const getContextPayload = () => {
         }
       }
 
-      // 3. Optimistic UI update (Show user message immediately)
-      setChatHistory(prev => [...prev, userMessage]);
-
       try {
-        // --- NEW RAG BACKEND CALL ---
-        // We use the helper function getContextPayload() you added earlier
-        const payload = {
-          message: newMessage,
-          userId: userId,
-          metrics: getContextPayload(), 
-          chatHistory: chatHistory.slice(-5) // Send limited history for context
-        };
-
-        // Call the Vercel serverless function
-        const res = await fetch('/api/chat', {
+        const res = await exponentialBackoffFetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+        const result = await res.json();
+        const candidate = result.candidates?.[0];
+        let modelText = "Sorry, I couldn't generate a response. Please check the console for API errors.";
 
-        if (!res.ok) throw new Error("Backend error: " + res.statusText);
-        
-        const data = await res.json();
-        const modelText = data.text;
-        const sources = data.sources || []; 
-        // --- END BACKEND CALL ---
+        if (candidate && candidate.content?.parts?.length) {
+          modelText = candidate.content.parts.map(p => p.text || '').join('\n\n');
+        } else if (result.error) {
+          modelText = `API Error: ${result.error.message}.`;
+        }
 
         const modelMessage = {
           role: 'model',
           text: modelText,
-          sources: sources, // Now populated by Pinecone/RAG!
+          sources: [],
           createdAt: Date.now()
         };
 
-        // 4. Save Model Response to Firestore
+        // 2. Save Model Response Message to Firestore
         if (db && userId) {
           try {
             const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
@@ -1898,25 +2141,17 @@ const getContextPayload = () => {
           }
         }
 
-        // 5. Update UI & Speak
-        setChatHistory(prev => [...prev, modelMessage]);
-
+        // Speak response if enabled
         if (speechEnabled || isVoiceMode) {
           speakText(modelText);
         }
 
       } catch (e) {
         console.error("Chatbot API Error:", e);
-        
-        // Add error message to chat so user knows something failed
-        const errorMessage = { 
-            role: 'model', 
-            text: `Error fetching response: ${e.message}`, 
-            sources: [], 
-            createdAt: Date.now() 
-        };
-        setChatHistory(prev => [...prev, errorMessage]);
-
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'model', text: `Error fetching response: ${e.message}`, sources: [], createdAt: Date.now() }
+        ]);
         if (isVoiceMode) {
           speakText("I'm sorry, I encountered an error. Please try again.");
         }
@@ -1924,9 +2159,13 @@ const getContextPayload = () => {
         setIsChatLoading(false);
       }
     },
-    // IMPORTANT: Updated dependencies to include all metric states used in getContextPayload
-    [isLocalRun, chatHistory, db, userId, speechEnabled, speakText, isVoiceMode, stepCount, sleepHours, heartRate, takenMedications]
+    [isLocalRun, chatHistory, db, userId, speechEnabled, speakText, isVoiceMode]
   );
+
+  // Update ref when callChatbotAPI changes
+  useEffect(() => {
+    callChatbotApiRef.current = callChatbotAPI;
+  }, [callChatbotAPI]);
 
   // Auto-scroll to bottom of chat
   // Auto-scroll to bottom of chat + file input ref
@@ -1939,6 +2178,10 @@ const getContextPayload = () => {
   const videoReff = useRef(null);   // <video> element inside the modal
   const canvasReff = useRef(null);  // hidden <canvas> used to grab a frame
   const [cameraStream, setCameraStream] = useState(null); // to stop camera later
+
+  const [cameraMode, setCameraMode] = useState(null); // 'chat' or 'prescription'
+
+
 
 
   useEffect(() => {
@@ -2016,11 +2259,20 @@ const getContextPayload = () => {
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
-      setAttachedImage(file);      // same state you use for uploaded images
-      setIsCameraModalOpen(false); // close modal
+
+      if (cameraMode === 'prescription') {
+        // Used from Upload prescription → Take a photo
+        setPrescriptionImage(file);
+        handleScanPrescriptionWithGemini(file);
+      } else {
+        // default: chat image attachment
+        setAttachedImage(file);
+      }
+
+      setIsCameraModalOpen(false);
+      setCameraMode(null);
     }, "image/jpeg", 0.9);
   };
-
 
   const handleClearChat = () => {
     if (!window.confirm("Are you sure you want to clear the chat history?")) return;
@@ -2049,6 +2301,260 @@ const getContextPayload = () => {
     const { name, value } = e.target;
     setNewMedication(prev => ({ ...prev, [name]: value }));
   };
+
+  // ---------------- Prescription → Gemini → pre-fill form ----------------
+  const handlePrescriptionFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file (jpg, png, etc.)');
+      event.target.value = '';
+      return;
+    }
+
+    setPrescriptionImage(file);
+    handleScanPrescriptionWithGemini(file);
+  };
+
+  // Convert a "1-0-1" style pattern into actual time slots
+  // Format: morning - afternoon - night
+  const computeTimesFromPattern = (pattern) => {
+    if (!pattern) {
+      // fallback: once a day morning
+      return ["08:00"];
+    }
+
+    // Remove spaces, handle formats like "1 - 0 - 1" or "101"
+    const cleaned = pattern.replace(/\s/g, '');
+    const parts = cleaned.includes('-') ? cleaned.split('-') : cleaned.split('');
+
+    const times = [];
+    // index 0 → morning, 1 → afternoon, 2 → night
+    if (parts[0] === '1') times.push("08:00"); // morning
+    if (parts[1] === '1') times.push("14:00"); // afternoon
+    if (parts[2] === '1') times.push("21:00"); // night
+
+    // If we somehow got nothing, default to once in morning
+    return times.length ? times : ["08:00"];
+  };
+
+  const handleScanPrescriptionWithGemini = async (file) => {
+    const apiKey = isLocalRun ? GEMINI_API_KEY : "";
+    if (!apiKey) {
+      setError("GEMINI API ERROR: Missing API Key. Cannot scan prescription.");
+      return;
+    }
+
+    setIsPrescriptionScanning(true);
+
+    try {
+      // 1. Read image as base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (!reader.result) return reject(new Error("Failed to read image"));
+          const resultStr = reader.result.toString();
+          const parts = resultStr.split(',');
+          resolve(parts[1] || resultStr);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // 2. Build Gemini request
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+      const prompt = `
+You are reading a doctor's prescription image.
+
+Your job is to extract ONLY the information needed to create medication reminders:
+- medication name
+- dosage
+- morning/afternoon/night pattern written like "1 - 0 - 1".
+
+Return ONLY a single JSON object in this exact structure:
+
+{
+  "medications": [
+    {
+      "medicationName": "string",
+      "dose": "string",
+      "doseIsInferred": true,
+      "timingPattern": "1-0-1"
+    }
+  ]
+}
+
+Rules:
+
+- medicationName:
+  - Include the drug name and strength if visible.
+  - Example: "Amoxicillin 500 mg", "Atorvastatin 10 mg".
+
+- dose:
+  - If dosage instructions are clearly written (e.g. "1-0-1", "1-1-1", "1 tab OD", "1 tab BD"):
+    - Convert them into a short, clear instruction.
+    - Examples: "1 tablet twice daily", "1 tablet once daily at night".
+    - Set doseIsInferred to false.
+  - If NO clear dosage is written for that medication:
+    - Use your medical knowledge to infer a typical adult dose that is commonly prescribed.
+    - Put that inferred dose text into dose.
+    - Set doseIsInferred to true.
+
+- timingPattern:
+  - Look specifically for patterns like "1 - 0 - 1", "1-1-0", "0-1-1", etc.
+  - First position = morning, second = afternoon, third = night.
+  - You may normalise formats, e.g. "1 0 1" → "1-0-1".
+  - If pattern is not explicitly written but text clearly implies, e.g. "morning and night", you may infer "1-0-1".
+  - If you truly cannot deduce any pattern, use "1-0-0" (once in the morning) as a safe default.
+
+- medications:
+  - If you find multiple medications, return ALL of them inside the medications array.
+  - If you find only one, still return it inside the array.
+
+- Do not include any explanation or extra text outside of the JSON object.
+`;
+
+      const payload = {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  data: base64,
+                  mimeType: file.type || "image/jpeg"
+                }
+              }
+            ]
+          }
+        ]
+      };
+
+      const res = await exponentialBackoffFetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await res.json();
+      const candidate = result.candidates?.[0];
+
+      if (!candidate || !candidate.content?.parts?.length) {
+        throw new Error("No response from Gemini for prescription.");
+      }
+
+      // Gemini might wrap JSON in extra text → pull out JSON part
+      const raw = candidate.content.parts.map(p => p.text || '').join('\n');
+      const firstBrace = raw.indexOf('{');
+      const lastBrace = raw.lastIndexOf('}');
+      const jsonText =
+        firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace
+          ? raw.slice(firstBrace, lastBrace + 1)
+          : raw;
+
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch (e) {
+        console.error("Failed to parse JSON from Gemini:", raw);
+        throw new Error("Could not understand prescription. Please type details manually.");
+      }
+
+      // 3) Normalise to an array of meds
+      let medsFromRx = [];
+      if (Array.isArray(parsed.medications)) {
+        medsFromRx = parsed.medications;
+      } else if (parsed.medicationName || parsed.name) {
+        // fallback if model still returns single object
+        medsFromRx = [parsed];
+      }
+
+      if (!medsFromRx.length) {
+        throw new Error("No medications found in prescription image.");
+      }
+
+      const nowBase = Date.now();
+
+      // 4) Build reminders from each medication
+      const builtMeds = medsFromRx.map((m, idx) => {
+        const medName = m.medicationName || m.name || "";
+        const dose = m.dose || "";
+        const pattern =
+          m.timingPattern ||
+          m.pattern ||
+          m.timing ||
+          m.schedule ||
+          ""; // catch any reasonable naming
+
+        const times = computeTimesFromPattern(pattern);
+
+        return {
+          id: nowBase + idx,
+          name: medName,
+          dose,
+          times,
+          createdFromPrescription: true,
+          doseIsInferred: m.doseIsInferred === true || (!m.dose && !!medName),
+          timingPattern: pattern
+        };
+      });
+
+      // 5) Persist all of them in Firestore so they stay across logins
+      if (!db || !userId) {
+        throw new Error("Database not ready while saving prescription medications.");
+      }
+
+      const medCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/medications`);
+
+      // Save each medication as its own document
+      await Promise.all(
+        builtMeds.map(async (m) => {
+          const medicationData = {
+            name: m.name,
+            dose: m.dose,
+            times: m.times,
+            createdAt: Date.now(),
+            createdFromPrescription: true,
+            timingPattern: m.timingPattern || "",
+            doseIsInferred: !!m.doseIsInferred,
+          };
+
+          await addDoc(medCollectionRef, medicationData);
+        })
+      );
+
+      // Firestore onSnapshot listener will update `medications` state with real IDs,
+      // so we don't need to call setMedications manually here.
+
+      // 6) Clear the form & close the Add Medication dialog
+      setNewMedication({ name: '', dose: '', times: ['08:00'] });
+      setPrescriptionImage(null);
+      setEditingMedId(null);
+      setIsAdding(false);
+
+      setError(null);
+
+      const inferredCount = builtMeds.filter(m => m.doseIsInferred).length;
+      const totalCount = builtMeds.length;
+
+      let msg = `Prescription scanned. Created ${totalCount} medication reminder${totalCount > 1 ? "s" : ""} from the image.`;
+      if (inferredCount > 0) {
+        msg += ` For ${inferredCount} of them, the dosage was not written clearly, so a common adult dose was inferred.`;
+      }
+      msg += ` You can edit any reminder from the list if needed.`;
+
+      alert(msg);
+    } catch (e) {
+      console.error("Prescription scan error:", e);
+      setError(`Failed to scan prescription: ${e.message}`);
+    } finally {
+      setIsPrescriptionScanning(false);
+    }
+  };
+
   const handleTimeChange = (index, value) => {
     const cleanValue = value.replace(':', '').slice(0, 4);
     setNewMedication(prev => {
@@ -2070,48 +2576,78 @@ const getContextPayload = () => {
       }
       return;
     }
-    if (!newMedication.name.trim() || !newMedication.dose.trim() || newMedication.times.every(t => !t.trim())) {
-      setError('Please enter a name, dose, and at least one time.');
+
+    if (
+      !newMedication.name.trim() ||
+      !newMedication.dose.trim() ||
+      newMedication.times.every((t) => !t.trim())
+    ) {
+      setError("Please enter a name, dose, and at least one time.");
       return;
     }
+
     const validTimes = newMedication.times
-      .map(t => t.trim())
-      .filter(t => t.match(/^\d{2}:\d{2}$/))
+      .map((t) => t.trim())
+      .filter((t) => t.match(/^\d{2}:\d{2}$/))
       .sort();
-    if (validTimes.length === 0) { setError('Use the time picker to select valid times.'); return; }
+
+    if (validTimes.length === 0) {
+      setError("Use the time picker to select valid times.");
+      return;
+    }
 
     const medicationData = {
       name: newMedication.name.trim(),
       dose: newMedication.dose.trim(),
       times: validTimes,
-      createdAt: Date.now()
+      updatedAt: Date.now(),
     };
 
     try {
-      const medCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/medications`);
-      await addDoc(medCollectionRef, medicationData);
+      const medCollectionRef = collection(
+        db,
+        `/artifacts/${appId}/users/${userId}/medications`
+      );
 
-      // >> NEW: Trigger n8n Webhook for scheduling/confirmation
-      try {
-        fetch('https://AdityaPrakash781-vytalcare-n8n.hf.space/webhook/new-medication', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            medName: newMedication.name,
-            times: validTimes
-          })
+      if (editingMedId) {
+        // ✅ EDIT EXISTING MEDICATION
+        const medDocRef = doc(medCollectionRef, editingMedId);
+        await updateDoc(medDocRef, medicationData);
+        // your onSnapshot listener will refresh `medications`
+      } else {
+        // ✅ CREATE NEW MEDICATION
+        await addDoc(medCollectionRef, {
+          ...medicationData,
+          createdAt: Date.now(),
         });
-      } catch (webhookError) {
-        console.warn("Failed to trigger n8n webhook", webhookError);
-        // We do not stop the app flow if the webhook fails, as the local save was successful
+
+        // optional webhook only for new meds
+        try {
+          fetch(
+            "https://AdityaPrakash781-vytalcare-n8n.hf.space/webhook/new-medication",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId,
+                medName: newMedication.name,
+                times: validTimes,
+              }),
+            }
+          );
+        } catch (webhookError) {
+          console.warn("Failed to trigger n8n webhook", webhookError);
+        }
       }
 
-      setNewMedication({ name: '', dose: '', times: ['08:00'] });
+      // reset + close form for both add and edit
+      setNewMedication({ name: "", dose: "", times: ["08:00"] });
+      setEditingMedId(null);
+      setPrescriptionImage(null);
       setIsAdding(false);
       setError(null);
     } catch (e) {
-      console.error("Error adding document: ", e);
+      console.error("Error saving medication: ", e);
       setError(`Failed to save medication: ${e.message}.`);
     }
   };
@@ -2171,86 +2707,209 @@ const getContextPayload = () => {
    * Renderers (unchanged)
    * -------------------------------------- */
   const renderMedicationForm = () => (
-    <div className="p-6 rounded-2xl space-y-5 bg-surface border border-slate-100 shadow-sm animate-fade-in">
-      <h3 className="text-lg font-bold text-text-main">Add New Medication</h3>
+    <div className="p-6 rounded-2xl space-y-5 bg-surface border border-slate-100 dark:border-slate-700 shadow-sm animate-fade-in">
+      {/* Title changes depending on Add vs Edit */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-bold text-text-main dark:text-white">
+          {editingMedId ? 'Edit Medication' : 'Add New Medication'}
+        </h3>
+        {editingMedId && (
+          <span className="text-xs text-text-muted dark:text-slate-400">
+            You're updating an existing reminder
+          </span>
+        )}
+      </div>
 
+      {/* Name + Dose */}
       <div className="space-y-3">
         <input
-          type="text" name="name" value={newMedication.name} onChange={handleNewMedChange}
-          placeholder="Medication Name (e.g., Vitamin D)"
+          type="text"
+          name="name"
+          value={newMedication.name}
+          onChange={handleNewMedChange}
+          placeholder="Medication Name (e.g. Vitamin D)"
           className="w-full p-3 border border-slate-200 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 focus:bg-white"
         />
         <input
-          type="text" name="dose" value={newMedication.dose} onChange={handleNewMedChange}
-          placeholder="Dose (e.g., 1000 IU or 1 tab)"
+          type="text"
+          name="dose"
+          value={newMedication.dose}
+          onChange={handleNewMedChange}
+          placeholder="Dose (e.g. 1000 IU or 1 tab)"
           className="w-full p-3 border border-slate-200 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 focus:bg-white"
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium mb-2 text-text-muted">Daily Schedule Times</label>
-        <div className="flex flex-wrap gap-3 items-center">
-          {newMedication.times.map((time, index) => {
-            // Convert 24hr time to 12hr format for display
-            const get12HrFormat = (t) => {
-              if (!t || t.length < 5) return '';
-              const [h, m] = t.split(':').map(Number);
-              if (isNaN(h) || isNaN(m)) return '';
-              const ampm = h >= 12 ? 'PM' : 'AM';
-              const hr12 = h % 12 || 12;
-              return `${hr12}:${m.toString().padStart(2, '0')} ${ampm}`;
-            };
-            return (
-              <div key={`time-input-${index}`} className="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                <input
-                  type="text"
-                  value={time}
-                  onChange={(e) => {
-                    let val = e.target.value.replace(/[^0-9:]/g, '');
-                    // Auto-insert colon after 2 digits
-                    if (val.length === 2 && !val.includes(':')) {
-                      val = val + ':';
-                    }
-                    // Limit to HH:MM format
-                    if (val.length <= 5) {
-                      handleTimeChange(index, val);
-                    }
-                  }}
-                  placeholder="HH:MM"
-                  maxLength={5}
-                  pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
-                  className="w-16 p-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-center text-sm focus:outline-none focus:border-primary dark:text-white font-mono"
-                />
-                {time && time.length === 5 && <span className="text-xs text-text-muted dark:text-slate-400">({get12HrFormat(time)})</span>}
-                <button
-                  onClick={() => handleRemoveTime(index)}
-                  className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-colors"
-                  aria-label="Remove time"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            );
-          })}
+      {/* Upload prescription (for new OR edit if you want to re-scan) */}
+      <div className="relative flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {/* Hidden input for prescription image */}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            ref={prescriptionFileInputRef}
+            className="hidden"
+            onChange={handlePrescriptionFileChange}
+          />
+
           <button
-            onClick={handleAddTime}
-            className="flex items-center px-3 py-2 rounded-lg border border-dashed border-primary/40 text-primary text-sm font-medium hover:bg-primary/5 transition-colors"
+            type="button"
+            onClick={() => setShowPrescriptionAttachMenu(prev => !prev)}
+            disabled={isPrescriptionScanning}
+            className="px-3 py-2 text-xs rounded-lg border border-primary/40 text-primary hover:bg-primary/5 disabled:opacity-60 flex items-center gap-1.5"
           >
-            <Plus size={14} className="mr-1.5" /> Add Time
+            {isPrescriptionScanning ? (
+              <span>Scanning…</span>
+            ) : (
+              <>
+                <Paperclip size={14} />
+                <span>Upload prescription</span>
+              </>
+            )}
           </button>
         </div>
+
+        {showPrescriptionAttachMenu && (
+          <div className="absolute left-0 top-full mt-1 w-44 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-40 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setShowPrescriptionAttachMenu(false);
+                if (prescriptionFileInputRef.current) {
+                  prescriptionFileInputRef.current.click(); // open file browser
+                }
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-t-xl"
+            >
+              Upload photo
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPrescriptionAttachMenu(false);
+                setCameraMode('prescription'); // 👈 tell the modal we’re scanning Rx
+                setIsCameraModalOpen(true);    // 👈 open the same webcam modal
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-b-xl border-t border-slate-100 dark:border-slate-700"
+            >
+              Take a photo
+            </button>
+          </div>
+        )}
       </div>
 
+      {prescriptionImage && (
+        <div className="flex items-center gap-3 mt-2 px-1">
+          {/* Tiny image preview */}
+          <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+            <img
+              src={URL.createObjectURL(prescriptionImage)}
+              alt="Prescription preview"
+              className="w-full h-full object-cover"
+            />
+          </div>
+
+          {/* Info text (like chat preview) */}
+          <div className="flex-1 text-[11px] text-text-muted dark:text-slate-400">
+            <div className="font-semibold text-text-main dark:text-slate-100 mb-0.5 truncate">
+              {prescriptionImage.name || 'camera-photo.jpg'}
+            </div>
+            <div>
+              Using this image to read your prescription and create reminders.
+              Please double-check the name, dose and timings below.
+            </div>
+          </div>
+
+          {/* Optional: clear button */}
+          <button
+            type="button"
+            onClick={() => setPrescriptionImage(null)}
+            className="text-[10px] px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+          >
+            Remove
+          </button>
+        </div>
+      )}
+
+      {/* Time slots editor */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-text-muted dark:text-slate-400">
+          When should you take it?
+        </p>
+
+        <div className="space-y-2">
+          {newMedication.times.map((time, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => handleTimeChange(index, e.target.value)}
+                className="p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+              {newMedication.times.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveTime(index)}
+                  className="px-2 py-1 text-xs rounded-lg border border-red-200 text-red-500 hover:bg-red-50"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleAddTime}
+          className="mt-2 text-xs font-medium text-primary hover:underline"
+        >
+          + Add another time
+        </button>
+      </div>
+
+      {/* Save / Update button */}
       <div className="pt-2 flex justify-end">
         <button
           onClick={handleSaveMedication}
           className="flex items-center px-6 py-3 bg-primary text-white font-semibold rounded-xl shadow-md shadow-primary/20 hover:bg-primary-dark hover:-translate-y-0.5 transition-all duration-200"
         >
-          <Bell size={18} className="mr-2" /> Save Medication
+          <Bell size={18} className="mr-2" />
+          {editingMedId ? 'Update Medication' : 'Save Medication'}
         </button>
       </div>
     </div>
   );
+
+  const handleEditMedication = (medOrId) => {
+    // Accept either a med object or an id
+    const med =
+      typeof medOrId === 'string'
+        ? medications.find((m) => m.id === medOrId)
+        : medOrId;
+
+    if (!med) return;
+
+    // Open the add/edit form
+    setIsAdding(true);
+
+    // Remember which medication we're editing
+    setEditingMedId(med.id);
+
+    // Pre-fill the form fields
+    setNewMedication({
+      name: med.name || '',
+      dose: med.dose || '',
+      times:
+        Array.isArray(med.times) && med.times.length
+          ? med.times
+          : ['08:00'],
+    });
+
+    // We're editing, not scanning a new prescription
+    setPrescriptionImage(null);
+  };
 
   const renderRemindersTab = () => {
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -2295,7 +2954,21 @@ const getContextPayload = () => {
             Medication Reminders
           </h2>
           <button
-            onClick={() => setIsAdding(!isAdding)}
+            onClick={() => {
+              if (isAdding) {
+                // closing
+                setIsAdding(false);
+                setEditingMedId(null);
+                setNewMedication({ name: '', dose: '', times: ['08:00'] });
+                setPrescriptionImage(null);
+              } else {
+                // opening fresh add form
+                setIsAdding(true);
+                setEditingMedId(null);
+                setNewMedication({ name: '', dose: '', times: ['08:00'] });
+                setPrescriptionImage(null);
+              }
+            }}
             className={`flex items-center px-4 py-2 rounded-xl font-medium transition-all duration-200 ${isAdding ? 'bg-slate-100 text-text-muted hover:bg-slate-200' : 'bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary-dark'}`}
           >
             {isAdding ? <X size={18} className="mr-2" /> : <Plus size={18} className="mr-2" />}
@@ -2435,12 +3108,22 @@ const getContextPayload = () => {
                   <div key={med.id} className="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-primary/30 transition-colors group">
                     <div className="flex justify-between items-start mb-2">
                       <p className="font-bold text-text-main dark:text-white">{med.name}</p>
-                      <button
-                        onClick={() => handleDeleteMedication(med.id)}
-                        className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleEditMedication(med)}
+                          className="text-slate-300 hover:text-primary transition-colors"
+                          aria-label="Edit medication"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMedication(med.id)}
+                          className="text-slate-300 hover:text-red-500 transition-colors"
+                          aria-label="Delete medication"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                     <p className="text-xs text-text-muted dark:text-slate-400 mb-2">{med.dose}</p>
                     <div className="flex flex-wrap gap-1">
@@ -2976,7 +3659,7 @@ const getContextPayload = () => {
     }
 
     return (
-      <div className="flex flex-col h-full min-h-[70vh] p-6 animate-fade-in relative">
+      <div className="flex flex-col h-full p-6 animate-fade-in relative overflow-hidden">
         {/* Voice Mode Overlay */}
         {isVoiceMode && (
           <div className="absolute inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md flex flex-col items-center justify-center p-8 rounded-3xl animate-fade-in">
@@ -3002,12 +3685,20 @@ const getContextPayload = () => {
               {isSpeaking ? "The AI is responding to you." : isListening ? "Go ahead, I'm listening." : "Please wait a moment."}
             </p>
 
-            <button
-              onClick={stopVoiceMode}
-              className="px-8 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-text-main dark:text-white rounded-xl font-semibold transition-colors flex items-center gap-2"
-            >
-              <X size={20} /> Exit Voice Mode
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={resetVoiceMode}
+                className="px-6 py-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-text-main dark:text-white rounded-xl font-semibold transition-colors flex items-center gap-2 border border-slate-200 dark:border-slate-600 shadow-sm"
+              >
+                <RefreshCw size={20} /> Reset
+              </button>
+              <button
+                onClick={stopVoiceMode}
+                className="px-8 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-text-main dark:text-white rounded-xl font-semibold transition-colors flex items-center gap-2"
+              >
+                <X size={20} /> Exit Voice Mode
+              </button>
+            </div>
           </div>
         )}
 
@@ -3092,7 +3783,7 @@ const getContextPayload = () => {
         </div>
 
 
-        <div className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+        <div className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent min-h-0">
           {visibleMessages.map((msg, index) => (
             <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`flex max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -3107,7 +3798,25 @@ const getContextPayload = () => {
                     : 'bg-slate-50 dark:bg-slate-800 text-text-main dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-none'
                     }`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                  <div
+                    className="whitespace-pre-wrap"
+                    dangerouslySetInnerHTML={{
+                      __html: (() => {
+                        let html = msg.text || '';
+                        // Convert **bold** to <strong>
+                        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                        // Convert *italic* to <em> (single asterisks)
+                        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+                        // Convert bullet points to numbered list
+                        let listCounter = 0;
+                        html = html.replace(/^[\s]*[-•*]\s+(.*)$/gm, (match, content) => {
+                          listCounter++;
+                          return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
+                        });
+                        return html;
+                      })()
+                    }}
+                  />
                 </div>
               </div>
             </div>
@@ -3305,48 +4014,6 @@ const getContextPayload = () => {
             </div>
           </div>
         </form>
-        {isCameraModalOpen && (
-          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3">
-              <h3 className="text-sm font-semibold text-text-main dark:text-slate-100 mb-1">
-                Take a photo
-              </h3>
-
-              {/* Live video preview */}
-              <div className="relative w-full rounded-xl overflow-hidden bg-black aspect-video">
-                <video
-                  ref={videoReff}
-                  autoPlay
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-              </div>
-
-              {/* Hidden canvas just for capturing the frame */}
-              <canvas ref={canvasReff} className="hidden" />
-
-              <div className="flex justify-end gap-2 mt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopCamera();
-                    setIsCameraModalOpen(false);
-                  }}
-                  className="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCaptureFromCamera}
-                  className="px-3 py-2 text-xs rounded-xl bg-primary text-white font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
-                >
-                  Capture
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -3355,52 +4022,208 @@ const getContextPayload = () => {
    * Error banner (unchanged)
    * -------------------------------------- */
 
-  const renderEmergencyTab = () => (
-    <div className="p-6 animate-fade-in">
-      <div className="flex items-center mb-6">
-        <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center mr-4">
-          <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold text-text-main dark:text-white">Emergency Contacts</h2>
-          <p className="text-text-muted dark:text-slate-400">Quick access to emergency services</p>
-        </div>
-      </div>
+  const renderEmergencyTab = () => {
+    // Fixed contacts (caregiver + defaults)
+    const baseContacts = [
+      caregiverContact.phone && {
+        label: caregiverContact.name
+          ? `Caregiver - ${caregiverContact.name}`
+          : 'Caregiver',
+        number: caregiverContact.phone,
+      },
+      { label: 'Personal Emergency', number: '+919353305251' },
+      { label: 'Ambulance Service', number: '108' },
+    ].filter(Boolean);
 
-      <div className="grid gap-4">
-        {[
-          { label: 'Personal Emergency', number: '+919353305251' },
-          { label: 'Ambulance Service', number: '108' }
-        ].map((contact, idx) => (
-          <div key={idx} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-text-muted dark:text-slate-400 mb-1">{contact.label}</p>
-              <p className="text-xl font-bold text-text-main dark:text-white tracking-wide">{contact.number}</p>
+    // User-added contacts (including Firestore id)
+    const userContacts = emergencyContacts.map((c) => ({
+      label: c.name,
+      number: c.number,
+      id: c.id,        // <-- keep the Firestore document id
+    }));
+
+    const contacts = [...baseContacts, ...userContacts];
+
+    const handleAddEmergencyContact = async () => {
+      if (!newEmergencyContact.name.trim() || !newEmergencyContact.number.trim()) {
+        alert('Please enter both name and phone number.');
+        return;
+      }
+
+      if (!db || !userId) {
+        alert('Database not ready. Please try again in a moment.');
+        return;
+      }
+
+      try {
+        const contactsRef = collection(
+          db,
+          `/artifacts/${appId}/users/${userId}/emergency_contacts`
+        );
+
+        await addDoc(contactsRef, {
+          name: newEmergencyContact.name.trim(),
+          number: newEmergencyContact.number.trim(),
+          createdAt: Date.now(),
+        });
+
+        // Listener will update emergencyContacts, just clear the form here
+        setNewEmergencyContact({ name: '', number: '' });
+      } catch (e) {
+        console.error('Error saving emergency contact:', e);
+        alert('Failed to save emergency contact.');
+      }
+    };
+
+    const handleDeleteEmergencyContact = async (contactId) => {
+      if (!contactId) return;
+
+      // Optimistic UI update (optional)
+      setEmergencyContacts((prev) => prev.filter((c) => c.id !== contactId));
+
+      if (!db || !userId) {
+        console.warn('DB not ready, deleted only from UI state.');
+        return;
+      }
+
+      try {
+        const contactDocRef = doc(
+          db,
+          `/artifacts/${appId}/users/${userId}/emergency_contacts`,
+          contactId
+        );
+        await deleteDoc(contactDocRef);
+      } catch (e) {
+        console.error('Error deleting emergency contact:', e);
+        alert('Failed to delete emergency contact.');
+      }
+    };
+
+    return (
+      <div className="p-6 animate-fade-in">
+        {/* Header + Edit button */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
+            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-2xl flex items-center justify-center mr-4">
+              <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
-            <div className="flex gap-3">
-              <a
-                href={`tel:${contact.number}`}
-                className="flex-1 sm:flex-none px-6 py-3 bg-green-500 dark:bg-green-700/80 hover:bg-green-600 dark:hover:bg-green-600/80 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-200 dark:shadow-green-900/20"
-              >
-                <Phone size={18} />
-                Call
-              </a>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(contact.number);
-                  alert(`Copied ${contact.number} to clipboard`);
-                }}
-                className="flex-1 sm:flex-none px-6 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
-              >
-                <Copy size={18} />
-                Copy
-              </button>
+            <div>
+              <h2 className="text-2xl font-bold text-text-main dark:text-white">
+                Emergency Contacts
+              </h2>
+              <p className="text-text-muted dark:text-slate-400">
+                Quick access to emergency services
+              </p>
             </div>
           </div>
-        ))}
+
+          <button
+            onClick={() => setIsEditingEmergency((prev) => !prev)}
+            className={`flex items-center px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${isEditingEmergency
+                ? 'bg-green-500 text-white border-green-500 hover:bg-green-600'
+                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+          >
+            {isEditingEmergency ? (
+              <>
+                <Save size={16} className="mr-1.5" />
+                Done
+              </>
+            ) : (
+              <>
+                <Edit2 size={16} className="mr-1.5" />
+                Edit
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Small inline form when Edit is ON */}
+        {isEditingEmergency && (
+          <div className="mb-6 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 flex flex-col sm:flex-row gap-3">
+            <input
+              type="text"
+              value={newEmergencyContact.name}
+              onChange={(e) =>
+                setNewEmergencyContact((prev) => ({ ...prev, name: e.target.value }))
+              }
+
+              placeholder="Name (e.g., Dad)"
+              className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm text-text-main dark:text-slate-100 outline-none focus:ring-2 focus:ring-primary/60"
+            />
+            <input
+              type="tel"
+              value={newEmergencyContact.number}
+              onChange={(e) =>
+                setNewEmergencyContact((prev) => ({ ...prev, number: e.target.value }))
+              }
+
+              placeholder="Phone number"
+              className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm text-text-main dark:text-slate-100 outline-none focus:ring-2 focus:ring-primary/60"
+            />
+            <button
+              type="button"
+              onClick={handleAddEmergencyContact}
+              className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold shadow-md shadow-primary/20 hover:bg-primary-dark transition-all"
+            >
+              Add
+            </button>
+          </div>
+        )}
+
+        {/* Contacts list */}
+        <div className="grid gap-4">
+          {contacts.map((contact, idx) => (
+            <div
+              key={idx}
+              className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+            >
+              <div>
+                <p className="text-sm font-medium text-text-muted dark:text-slate-400 mb-1">
+                  {contact.label}
+                </p>
+                <p className="text-xl font-bold text-text-main dark:text-white tracking-wide">
+                  {contact.number}
+                </p>
+              </div>
+              <div className="flex gap-3 items-center">
+                <a
+                  href={`tel:${contact.number}`}
+                  className="flex-1 sm:flex-none px-6 py-3 bg-green-500 dark:bg-green-700/80 hover:bg-green-600 dark:hover:bg-green-600/80 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-200 dark:shadow-green-900/20"
+                >
+                  <Phone size={18} />
+                  Call
+                </a>
+
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(contact.number);
+                    alert(`Copied ${contact.number} to clipboard`);
+                  }}
+                  className="flex-1 sm:flex-none px-6 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+                >
+                  <Copy size={18} />
+                  Copy
+                </button>
+
+                {/* Small delete icon - only for user-added contacts (those with an id) and when Edit mode is ON */}
+                {isEditingEmergency && contact.id && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteEmergencyContact(contact.id)}
+                    className="px-2 py-2 rounded-full bg-red-50 dark:bg-red-900/40 hover:bg-red-100 dark:hover:bg-red-800 text-red-600 dark:text-red-200 flex items-center justify-center transition-colors"
+                    title="Delete contact"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderError = () => {
     if (!error) return null;
@@ -3523,20 +4346,61 @@ const getContextPayload = () => {
               setTheme={setTheme}
               colorBlindMode={colorBlindMode}
               setColorBlindMode={setColorBlindMode}
-              profile={profile}         // <--- ADD THIS
-              setProfile={setProfile}   // <--- ADD THIS (Required for editing to work)
+              onCaregiverChange={handleCaregiverChange}
             />
           </div>
 
           {/* Main Content */}
-          {/* Main Content */}
-          <div className="flex-grow bg-surface dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none min-h-[80vh] border border-slate-100 dark:border-slate-800 overflow-hidden">
+          <div className={`flex-grow bg-surface dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden ${activeTab !== 'chatbot' ? 'min-h-[80vh]' : ''}`}>
             {activeTab === 'reminders' && renderRemindersTab()}
             {activeTab === 'activity' && renderActivityTab()}
             {activeTab === 'chatbot' && renderChatbotTab()}
             {activeTab === 'emergency' && renderEmergencyTab()}
           </div>
         </div>
+
+        {isCameraModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 w-full max-w-md shadow-2xl flex flex-col gap-3">
+              <h3 className="text-sm font-semibold text-text-main dark:text-slate-100 mb-1">
+                Take a photo
+              </h3>
+
+              {/* Live video preview */}
+              <div className="relative w-full rounded-xl overflow-hidden bg-black aspect-video">
+                <video
+                  ref={videoReff}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              {/* Hidden canvas just for capturing the frame */}
+              <canvas ref={canvasReff} className="hidden" />
+
+              <div className="flex justify-end gap-2 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopCamera();
+                    setIsCameraModalOpen(false);
+                  }}
+                  className="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCaptureFromCamera}
+                  className="px-3 py-2 text-xs rounded-xl bg-primary text-white font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
+                >
+                  Capture
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {renderInfoModal()}
       </div>
     </div>

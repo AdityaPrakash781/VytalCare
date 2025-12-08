@@ -1,6 +1,0 @@
-Aspirin (Acetylsalicylic acid) is an NSAID used for pain, fever, inflammation, and blood thinning. 
-Common uses: headache, arthritis pain, menstrual pain, fever, and low-dose for heart attack/stroke prevention. 
-Mechanism: inhibits COX enzymes → reduces prostaglandins → decreases pain + inflammation; inhibits platelet aggregation. 
-Warnings: GI bleeding, ulcers, kidney issues, bleeding disorders, aspirin-sensitive asthma. Avoid in children with viral infections due to Reye’s syndrome. 
-Side effects: stomach irritation, nausea, bleeding, tinnitus. Seek help for vomiting blood or black stools. 
-Typical doses: 325–650 mg for pain; 75–100 mg daily for heart protection.
