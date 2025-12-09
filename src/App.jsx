@@ -11,7 +11,7 @@ import appIcon from "./assets/iconn.png";
 
 
 
-import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info, Mic, MicOff, Volume2, VolumeX, Globe, Paperclip, RefreshCw } from 'lucide-react';
+import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info, Mic, MicOff, Volume2, VolumeX, Globe, Paperclip, RefreshCw, ExternalLink } from 'lucide-react';
 
 /** ---------------------------------------
  * App Config (unchanged)
@@ -172,6 +172,129 @@ const HealthScoreRing = ({ score, size = 180 }) => {
   );
 };
 
+const BMIGauge = ({ bmi }) => {
+  const segments = [
+    { label: "Underweight", range: [10, 18.5], color: "#FB7185" }, // rose
+    { label: "Normal",      range: [18.5, 25], color: "#22C55E" }, // green
+    { label: "Overweight",  range: [25, 30],   color: "#FBBF24" }, // amber
+    { label: "Obesity",     range: [30, 40],   color: "#EF4444" }, // red
+  ];
+
+  const minBMI = 10;
+  const maxBMI = 40;
+
+  const cx = 110;
+  const cy = 110;
+  const arcRadius = 80;
+  const scaleRadius = 100;         // where numbers sit (outer ring)
+  const pointerLength = 70;
+
+  const scaleValues = [10, 15, 20, 25, 30, 35, 40];
+
+  // Helper: map BMI value -> angle on semicircle (-π on left, 0 on right)
+  const angleForValue = (val) => {
+    const ratio = (val - minBMI) / (maxBMI - minBMI); // 0..1
+    return ratio * Math.PI - Math.PI;                 // -π .. 0
+  };
+
+  // Clamp BMI for safety
+  const numericBmi = bmi ? parseFloat(bmi) : minBMI;
+  const clampedBmi = Math.min(maxBMI, Math.max(minBMI, numericBmi));
+  const pointerAngle = angleForValue(clampedBmi);
+
+  const pointerX = cx + pointerLength * Math.cos(pointerAngle);
+  const pointerY = cy + pointerLength * Math.sin(pointerAngle);
+
+  return (
+    <div className="flex flex-col items-center p-4">
+      <svg width="220" height="140" viewBox="0 0 220 140">
+        {/* COLOURED BMI SEGMENTS */}
+        {segments.map((seg, i) => {
+          const startAngle = angleForValue(seg.range[0]);
+          const endAngle = angleForValue(seg.range[1]);
+
+          const x1 = cx + arcRadius * Math.cos(startAngle);
+          const y1 = cy + arcRadius * Math.sin(startAngle);
+          const x2 = cx + arcRadius * Math.cos(endAngle);
+          const y2 = cy + arcRadius * Math.sin(endAngle);
+
+          const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+
+          return (
+            <path
+              key={i}
+              d={`M${x1},${y1} A${arcRadius},${arcRadius} 0 ${largeArc} 1 ${x2},${y2}`}
+              stroke={seg.color}
+              strokeWidth="20"
+              fill="none"
+              strokeLinecap="round"
+            />
+          );
+        })}
+
+        {/* OUTER SCALE VALUES ALL AROUND (10..40) */}
+        {scaleValues.map((val) => {
+          const a = angleForValue(val);
+          const tx = cx + scaleRadius * Math.cos(a);
+          const ty = cy + scaleRadius * Math.sin(a);
+
+          return (
+            <text
+              key={val}
+              x={tx}
+              y={ty}
+              fill="#E5E7EB"
+              fontSize="10"
+              textAnchor="middle"
+              alignmentBaseline="middle"
+              style={{ pointerEvents: "none" }}
+            >
+              {val}
+            </text>
+          );
+        })}
+
+        {/* POINTER – needle + dot */}
+        <line
+          x1={cx}
+          y1={cy}
+          x2={pointerX}
+          y2={pointerY}
+          stroke="#0F172A"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+        <circle cx={pointerX} cy={pointerY} r="5" fill="#0F172A" />
+        <circle cx={cx} cy={cy} r="6" fill="#0F172A" />
+      </svg>
+
+      <p className="mt-2 text-xl font-bold text-white">
+        BMI = {bmi}
+      </p>
+
+      {/* LEGEND */}
+      <div className="flex flex-wrap justify-center gap-3 mt-2 text-xs text-slate-300">
+        <div className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm" style={{ background: "#FB7185" }} />
+          <span>Underweight</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm" style={{ background: "#22C55E" }} />
+          <span>Normal</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm" style={{ background: "#FBBF24" }} />
+          <span>Overweight</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm" style={{ background: "#EF4444" }} />
+          <span>Obesity</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /** ---------------------------------------
  * Profile Section Component (UPDATED)
  * -------------------------------------- */
@@ -187,7 +310,7 @@ const calculateAge = (dob) => {
   return age.toString();
 };
 
-const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode, onCaregiverChange }) => {
+const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode, onCaregiverChange, onBmiChange }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showColorBlindMenu, setShowColorBlindMenu] = useState(false);
   const [profile, setProfile] = useState({
@@ -405,6 +528,41 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
             </div>
           )}
         </div>
+
+        {/* Google Calendar Section */}
+        <div className="mt-8">
+          <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center bg-slate-100 p-2 rounded-lg dark:bg-slate-800 dark:text-slate-300">
+            Google Calendar
+          </h3>
+          <a
+            href="https://calendar.google.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between p-4 bg-white dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-primary/50 hover:shadow-md transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                <Calendar size={20} className="text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-text-main dark:text-white">Open Google Calendar</p>
+                <p className="text-xs text-text-muted dark:text-slate-400">View your medication reminders</p>
+              </div>
+            </div>
+            <ExternalLink size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
+          </a>
+
+          {/* Sign Out Button */}
+          <button
+            onClick={() => {
+              localStorage.clear();
+              window.location.reload();
+            }}
+            className="mt-4 w-full flex items-center justify-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all text-sm font-medium"
+          >
+            Sign Out
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -511,6 +669,14 @@ const getTodayDateKey = () => {
   return `${year}-${month}-${day}`;
 };
 
+const getWeekNumber = (d) => {
+  d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return weekNo;
+};
+
 const METRIC_INFO = {
   steps: {
     title: "Daily Steps",
@@ -544,7 +710,7 @@ const App = () => {
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
   const [medications, setMedications] = useState([]);
-  const [newMedication, setNewMedication] = useState({ name: '', dose: '', times: ['08:00'] });
+  const [newMedication, setNewMedication] = useState({ name: '', dose: '', times: ['08:00'], days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] });
   const [isAdding, setIsAdding] = useState(false);
   const [editingMedId, setEditingMedId] = useState(null);
 
@@ -566,6 +732,8 @@ const App = () => {
     number: ''
   });
 
+  // BMI state
+  const [bmi, setBmi] = useState(null);
 
   // Prescription → auto-fill meds
   const [isPrescriptionScanning, setIsPrescriptionScanning] = useState(false);
@@ -691,6 +859,18 @@ const App = () => {
   const [distance3hTrend, setDistance3hTrend] = useState([]);
   const [weeklyDistance, setWeeklyDistance] = useState([]);
 
+  // Health Plan Tab State
+  const [weeklyBP, setWeeklyBP] = useState({ systolic: '', diastolic: '' });
+  const [weeklySugar, setWeeklySugar] = useState('');
+  const [weeklySpo2, setWeeklySpo2] = useState('');
+  const [isSavingHealthData, setIsSavingHealthData] = useState(false);
+
+  // Calendar State
+  const [calendarEvents, setCalendarEvents] = useState(new Set()); // Set of "YYYY-MM-DD" strings
+  const [currentCalendarMonth, setCurrentCalendarMonth] = useState(new Date());
+  const [selectedQuarterlyDate, setSelectedQuarterlyDate] = useState(null);
+  const [selectedYearlyDate, setSelectedYearlyDate] = useState(null);
+
   // Auto-scroll & Glow refs
   const [highlightedGraph, setHighlightedGraph] = useState(null);
   const stepsRef = useRef(null);
@@ -774,6 +954,22 @@ const App = () => {
       setIsLoading(false);
     }
   }, [isLocalRun]);
+
+  // Fetch weekly health data
+  useEffect(() => {
+    if (!db || !userId) return;
+    const currentWeek = getWeekNumber(new Date());
+    const weekDocRef = doc(db, `/artifacts/${appId}/users/${userId}/health_plan/week_${currentWeek}`);
+
+    const unsubscribe = onSnapshot(weekDocRef, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        if (data.bp) setWeeklyBP(data.bp);
+        if (data.sugar) setWeeklySugar(data.sugar);
+      }
+    });
+    return () => unsubscribe();
+  }, [db, userId]);
 
   /** ----------------------------
    * Firestore Listeners
@@ -1233,12 +1429,13 @@ const App = () => {
       `client_id=${GOOGLE_CLIENT_ID}&` +
       `redirect_uri=${redirectUri}&` +
       `response_type=token&` +
-      // NOTE: add heart_rate scope
+      // NOTE: add heart_rate scope and calendar scope
       `scope=${encodeURIComponent([
         'https://www.googleapis.com/auth/fitness.activity.read',
         'https://www.googleapis.com/auth/fitness.sleep.read',
         'https://www.googleapis.com/auth/fitness.heart_rate.read',
-        'https://www.googleapis.com/auth/fitness.location.read'
+        'https://www.googleapis.com/auth/fitness.location.read',
+        'https://www.googleapis.com/auth/calendar.events'
       ].join(' '))}&` +
       `state=google-fit-connect`;
     window.location.href = authUrl;
@@ -2008,170 +2205,203 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
   /** ---------------------------------------
  * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
  * -------------------------------------- */
-  const callChatbotAPI = useCallback(
-    async (newMessage, imageInlineData = null) => {
-      const apiKey = isLocalRun ? GEMINI_API_KEY : "";
-      if (!apiKey) {
-        setError("GEMINI API ERROR: Missing API Key in local run. Cannot chat.");
-        return;
+ const callChatbotAPI = useCallback(
+  async (newMessage, imageInlineData = null) => {
+    // ============================================================
+    // 1. SETUP & LOADING STATE
+    // ============================================================
+    setIsChatLoading(true);
+
+    // Failsafe: Force stop loading after 20s
+    setTimeout(() => setIsChatLoading(false), 20000);
+
+    // ============================================================
+    // 2. SAVE USER MESSAGE TO FIRESTORE
+    // ============================================================
+    const userMessage = {
+      role: "user",
+      text: newMessage,
+      sources: [],
+      createdAt: Date.now()
+    };
+
+    if (db && userId) {
+      try {
+        const chatCollectionRef = collection(
+          db,
+          `/artifacts/${appId}/users/${userId}/chats`
+        );
+        await addDoc(chatCollectionRef, userMessage);
+      } catch (e) {
+        console.error("Error saving user message:", e);
       }
-      setIsChatLoading(true);
+    }
 
-      // Failsafe: If API hangs for 20s, force stop loading
-      setTimeout(() => {
-        setIsChatLoading(prev => {
-          if (prev) {
-            console.warn("API Call Failsafe: Force stopping loading state after 20s");
-            return false;
-          }
-          return prev;
-        });
-      }, 20000);
+    try {
+      let modelText = "";
+      let modelSources = [];
 
-      // Prepare history for API call (limit and convert format)
-      const contents = [
-        ...chatHistory,
-        { role: 'user', text: newMessage, imageInlineData }
-      ]
-        .slice(-10) // Keep the last 10 messages for context
-        .map(msg => {
-          const parts = [];
-          if (msg.text) {
-            parts.push({ text: msg.text });
-          }
-          if (msg.imageInlineData) {
-            parts.push({ inlineData: msg.imageInlineData });
-          }
-          return {
-            role: msg.role === 'model' ? 'model' : 'user',
-            parts
-          };
-        });
+      // ============================================================
+      // BRANCH A — IMAGE MESSAGE → NON-RAG GEMINI IMAGE CALL
+      // ============================================================
+      if (imageInlineData) {
+        console.log("🖼️ Image detected → Direct Gemini Vision API");
 
-      const systemInstruction = {
-        parts: [{
-          text: `
-You are a helpful and professional Health Navigator chatbot of VytalCare.
+        const systemInstruction = {
+          parts: [
+            {
+              text: `
+You are a helpful medical AI analyzing user-uploaded images.
 
-1. You are in a single continuous chat session.
-   - The "contents" you receive include the full recent conversation history.
-   - You MUST use that history for context when answering.
-
-2. MEMORY / CONTEXT BEHAVIOUR (VERY IMPORTANT):
-   - You CAN remember and refer to information the user told you earlier in THIS conversation.
-   - This includes their name, age, conditions they mention, medications, and other details.
-   - If the user asks things like "What is my name?" or "What did I just tell you?", answer using the information from earlier messages in this chat.
-   - DO NOT say that you "cannot retain personal information", that "each interaction is fresh", or that you "do not remember previous messages". Within this chat, you DO have access to prior messages through the provided contents.
-
-3. PRIVACY:
-   - Do NOT invent or assume any personal details that were not explicitly given in the conversation.
-   - Only use what is present in the chat history.
-
-4. MEDICAL BEHAVIOUR:
-   - Provide general, non-diagnostic information on medications, conditions, and health topics.
-   - Always clearly state that your guidance is NOT a substitute for professional medical consultation and is for general information only.
-   - Use Google Search (when available as a tool) for up-to-date medical and health context when needed.
-
-5. IMAGE & PHOTO CLARITY (VERY IMPORTANT):
-   - Users may send photos of wounds, rashes, skin issues, or medicine strips.
-   - FIRST, briefly describe what you see in the image in simple language.
-   - THEN, explain what it *could* be, giving a few possible explanations instead of a single diagnosis.
-   - Clearly state that this is only an AI guess based on the photo and text, and that it is NOT a medical diagnosis.
-   - Encourage the user to see a doctor or emergency service if the wound looks deep, infected (pus, spreading redness, fever), very painful, or if they are worried.
-   - For medicine strips: try to identify the medicine name, common use, and important precautions, but remind users to double-check the strip and consult a professional before taking anything.
+RULES:
+- Describe what you SEE, in simple language.
+- Give 2–3 possible explanations.
+- DO NOT DIAGNOSE.
+- DO NOT prescribe medications.
+- ALWAYS say: "This is AI-based visual analysis, not a diagnosis."
+- Recommend doctor visit if signs of infection, injury, or urgent symptoms.
 `
-        }]
+            }
+          ]
+        };
+
+        // ALWAYS USE REST API v1 (NOT v1beta)
+        const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+        const payload = {
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: newMessage },
+                { inlineData: imageInlineData }
+              ]
+            }
+          ],
+          systemInstruction
+        };
+
+        const res = await exponentialBackoffFetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await res.json();
+        modelText =
+          result?.candidates?.[0]?.content?.parts
+            ?.map((p) => p.text || "")
+            .join("\n\n") ||
+          result?.error?.message ||
+          "Sorry, I could not analyze this image.";
+      }
+
+      // ============================================================
+      // BRANCH B — TEXT MESSAGE → RAG BACKEND
+      // ============================================================
+      else {
+        console.log("💬 Text message → RAG Backend");
+
+        const response = await fetch("/api/chat-rag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: newMessage,
+            history: chatHistory.slice(-10),
+            image: null
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Backend RAG error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        modelText =
+          data.reply ||
+          data.answer ||
+          data.text ||
+          "I couldn’t generate a response.";
+
+        modelSources = data.sources || [];
+      }
+
+      // ============================================================
+      // 3. SAVE MODEL MESSAGE
+      // ============================================================
+      const modelMessage = {
+        role: "model",
+        text: modelText,
+        sources: modelSources,
+        createdAt: Date.now()
       };
 
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      if (db && userId) {
+        try {
+          const chatCollectionRef = collection(
+            db,
+            `/artifacts/${appId}/users/${userId}/chats`
+          );
+          await addDoc(chatCollectionRef, modelMessage);
+        } catch (e) {
+          console.error("Error saving model message:", e);
+        }
+      }
 
-      const payload = {
-        contents,
-        tools: [{ google_search: {} }],
-        systemInstruction
-      };
+      // ============================================================
+      // 4. OPTIONAL — TTS
+      // ============================================================
+      if (speechEnabled || isVoiceMode) {
+        speakText(modelText);
+      }
+    } catch (e) {
+      console.error("❌ Chatbot Error:", e);
 
-      // 1. Prepare and Save User Message to Firestore (text only)
-      const userMessage = {
-        role: 'user',
-        text: newMessage,
+      const errorReply = {
+        role: "model",
+        text: `Error: ${e.message}. Please try again.`,
         sources: [],
         createdAt: Date.now()
       };
 
       if (db && userId) {
         try {
-          const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-          addDoc(chatCollectionRef, userMessage);
-        } catch (e) {
-          console.error("Error saving user message to Firestore:", e);
+          const chatCollectionRef = collection(
+            db,
+            `/artifacts/${appId}/users/${userId}/chats`
+          );
+          await addDoc(chatCollectionRef, errorReply);
+        } catch (e2) {
+          console.error("Error saving error message:", e2);
         }
       }
 
-      try {
-        const res = await exponentialBackoffFetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const result = await res.json();
-        const candidate = result.candidates?.[0];
-        let modelText = "Sorry, I couldn't generate a response. Please check the console for API errors.";
-
-        if (candidate && candidate.content?.parts?.length) {
-          modelText = candidate.content.parts.map(p => p.text || '').join('\n\n');
-        } else if (result.error) {
-          modelText = `API Error: ${result.error.message}.`;
-        }
-
-        const modelMessage = {
-          role: 'model',
-          text: modelText,
-          sources: [],
-          createdAt: Date.now()
-        };
-
-        // 2. Save Model Response Message to Firestore
-        if (db && userId) {
-          try {
-            const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-            await addDoc(chatCollectionRef, modelMessage);
-          } catch (e) {
-            console.error("Error saving model message to Firestore:", e);
-          }
-        }
-
-        // Speak response if enabled
-        if (speechEnabled || isVoiceMode) {
-          speakText(modelText);
-        }
-
-      } catch (e) {
-        console.error("Chatbot API Error:", e);
-        setChatHistory(prev => [
-          ...prev,
-          { role: 'model', text: `Error fetching response: ${e.message}`, sources: [], createdAt: Date.now() }
-        ]);
-        if (isVoiceMode) {
-          speakText("I'm sorry, I encountered an error. Please try again.");
-        }
-      } finally {
-        setIsChatLoading(false);
-      }
-    },
-    [isLocalRun, chatHistory, db, userId, speechEnabled, speakText, isVoiceMode]
-  );
+      if (isVoiceMode) speakText("I encountered an error. Please try again.");
+    } finally {
+      setIsChatLoading(false);
+    }
+  },
+  [
+    chatHistory,
+    db,
+    userId,
+    speechEnabled,
+    speakText,
+    isVoiceMode,
+    appId,
+    GEMINI_API_KEY
+  ]
+);
 
   // Update ref when callChatbotAPI changes
   useEffect(() => {
     callChatbotApiRef.current = callChatbotAPI;
   }, [callChatbotAPI]);
 
-  // Auto-scroll to bottom of chat
-  // Auto-scroll to bottom of chat + file input ref
-  const chatEndRef = useRef(null);
-  const fileInputRef = useRef(null); // NEW: hidden file input for image upload
-  const cameraInputRef = useRef(null); // NEW: hidden file input for taking a photo
+  // Chat scroll + file input refs
+  const chatContainerRef = useRef(null); // scrollable chat area
+  const fileInputRef = useRef(null);     // hidden file input for image upload
+  const cameraInputRef = useRef(null);   // hidden file input for taking a photo
 
   // === Camera modal state & refs ===
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
@@ -2185,8 +2415,12 @@ You are a helpful and professional Health Navigator chatbot of VytalCare.
 
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatContainerRef.current) {
+      const el = chatContainerRef.current;
+      el.scrollTop = el.scrollHeight; // always jump to newest message
+    }
   }, [chatHistory, isChatLoading]);
+
 
   const handleFileChange = (event) => {
     const file = event.target.files?.[0];
@@ -2526,11 +2760,66 @@ Rules:
         })
       );
 
+      // ✅ ADD PRESCRIPTION MEDS TO GOOGLE CALENDAR
+      if (googleAccessToken) {
+        try {
+          const allDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          const dayToRRule = { 'Sun': 'SU', 'Mon': 'MO', 'Tue': 'TU', 'Wed': 'WE', 'Thu': 'TH', 'Fri': 'FR', 'Sat': 'SA' };
+          const rruleDays = allDays.map(d => dayToRRule[d]).join(',');
+
+          for (const med of builtMeds) {
+            for (const time of med.times) {
+              const [hours, minutes] = time.split(':').map(Number);
+
+              const startDate = new Date();
+              startDate.setHours(hours, minutes, 0, 0);
+
+              const endDate = new Date(startDate);
+              endDate.setMinutes(endDate.getMinutes() + 15);
+
+              const event = {
+                summary: `💊 ${med.name}`,
+                description: `Dose: ${med.dose}\n\nMedication reminder from Health Navigator (Prescription Scan)`,
+                start: {
+                  dateTime: startDate.toISOString(),
+                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                },
+                end: {
+                  dateTime: endDate.toISOString(),
+                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                },
+                recurrence: [
+                  `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays}`
+                ],
+                reminders: {
+                  useDefault: false,
+                  overrides: [
+                    { method: 'popup', minutes: 5 }
+                  ]
+                }
+              };
+
+              await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${googleAccessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(event)
+              });
+            }
+          }
+          console.log('Prescription medications added to Google Calendar');
+        } catch (calendarError) {
+          console.warn('Failed to add prescription meds to Google Calendar:', calendarError);
+        }
+      }
+
       // Firestore onSnapshot listener will update `medications` state with real IDs,
       // so we don't need to call setMedications manually here.
 
       // 6) Clear the form & close the Add Medication dialog
-      setNewMedication({ name: '', dose: '', times: ['08:00'] });
+      setNewMedication({ name: '', dose: '', times: ['08:00'], days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] });
       setPrescriptionImage(null);
       setEditingMedId(null);
       setIsAdding(false);
@@ -2596,12 +2885,20 @@ Rules:
       return;
     }
 
+    if (!newMedication.days || newMedication.days.length === 0) {
+      setError("Please select at least one day of the week.");
+      return;
+    }
+
+
     const medicationData = {
       name: newMedication.name.trim(),
       dose: newMedication.dose.trim(),
       times: validTimes,
+      days: newMedication.days,
       updatedAt: Date.now(),
     };
+
 
     try {
       const medCollectionRef = collection(
@@ -2640,8 +2937,84 @@ Rules:
         }
       }
 
+      // ✅ ADD TO GOOGLE CALENDAR
+      if (googleAccessToken) {
+        try {
+          // Map days to Google Calendar recurrence day codes
+          const dayToRRule = { 'Sun': 'SU', 'Mon': 'MO', 'Tue': 'TU', 'Wed': 'WE', 'Thu': 'TH', 'Fri': 'FR', 'Sat': 'SA' };
+          const rruleDays = newMedication.days.map(d => dayToRRule[d]).join(',');
+
+          let calendarSuccess = true;
+          let calendarErrorMsg = '';
+
+          // Create a calendar event for each time
+          for (const time of validTimes) {
+            const [hours, minutes] = time.split(':').map(Number);
+
+            // Create start date (today at the specified time)
+            const startDate = new Date();
+            startDate.setHours(hours, minutes, 0, 0);
+
+            // End date is 15 minutes after start
+            const endDate = new Date(startDate);
+            endDate.setMinutes(endDate.getMinutes() + 15);
+
+            const event = {
+              summary: `💊 ${medicationData.name}`,
+              description: `Dose: ${medicationData.dose}\n\nMedication reminder from Health Navigator`,
+              start: {
+                dateTime: startDate.toISOString(),
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+              },
+              end: {
+                dateTime: endDate.toISOString(),
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+              },
+              recurrence: [
+                `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays}`
+              ],
+              reminders: {
+                useDefault: false,
+                overrides: [
+                  { method: 'popup', minutes: 5 }
+                ]
+              }
+            };
+
+            const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${googleAccessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(event)
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              calendarSuccess = false;
+              calendarErrorMsg = errorData.error?.message || 'Unknown error';
+              console.error('Calendar API error:', errorData);
+            }
+          }
+
+          if (calendarSuccess) {
+            console.log('Medication added to Google Calendar');
+            alert('✅ Medication saved and added to your Google Calendar!');
+          } else {
+            console.warn('Failed to add to Google Calendar:', calendarErrorMsg);
+            alert(`⚠️ Medication saved, but Google Calendar sync failed: ${calendarErrorMsg}\n\nYou may need to sign out and sign back in to grant calendar permissions.`);
+          }
+        } catch (calendarError) {
+          console.warn('Failed to add to Google Calendar:', calendarError);
+          alert('⚠️ Medication saved, but Google Calendar sync failed. Please sign out and sign back in to enable calendar sync.');
+        }
+      } else {
+        alert('✅ Medication saved! (Calendar sync requires re-login for permissions)');
+      }
+
       // reset + close form for both add and edit
-      setNewMedication({ name: "", dose: "", times: ["08:00"] });
+      setNewMedication({ name: "", dose: "", times: ["08:00"], days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] });
       setEditingMedId(null);
       setPrescriptionImage(null);
       setIsAdding(false);
@@ -2654,8 +3027,53 @@ Rules:
 
   const handleDeleteMedication = async (id) => {
     if (!db) return;
+
+    // Get the medication data first to know the name for calendar deletion
+    const medToDelete = medications.find(m => m.id === id);
+
     const medDocRef = doc(db, `/artifacts/${appId}/users/${userId}/medications`, id);
-    try { await deleteDoc(medDocRef); }
+    try {
+      await deleteDoc(medDocRef);
+
+      // Delete from Google Calendar if we have access
+      if (googleAccessToken && medToDelete) {
+        try {
+          // Search for calendar events with this medication name
+          const searchQuery = encodeURIComponent(`💊 ${medToDelete.name}`);
+          const searchResponse = await fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/primary/events?q=${searchQuery}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${googleAccessToken}`
+              }
+            }
+          );
+
+          if (searchResponse.ok) {
+            const searchData = await searchResponse.json();
+            const events = searchData.items || [];
+
+            // Delete each matching event
+            for (const event of events) {
+              if (event.summary === `💊 ${medToDelete.name}`) {
+                await fetch(
+                  `https://www.googleapis.com/calendar/v3/calendars/primary/events/${event.id}`,
+                  {
+                    method: 'DELETE',
+                    headers: {
+                      'Authorization': `Bearer ${googleAccessToken}`
+                    }
+                  }
+                );
+              }
+            }
+            console.log('Medication and calendar events deleted');
+          }
+        } catch (calendarError) {
+          console.warn('Failed to delete from Google Calendar:', calendarError);
+        }
+      }
+    }
     catch (e) { console.error("Error deleting document: ", e); setError("Failed to delete medication."); }
   };
 
@@ -2693,7 +3111,19 @@ Rules:
   };
 
 
+  // Get current day name for filtering
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const currentDayName = dayNames[now.getDay()];
+
   const todaySchedule = medications
+    .filter(med => {
+      // If medication has days array, check if today is included
+      // If no days array (legacy data), show every day
+      if (Array.isArray(med.days) && med.days.length > 0) {
+        return med.days.includes(currentDayName);
+      }
+      return true; // Legacy medications without days show every day
+    })
     .flatMap(med => med.times.map(time => ({
       time: time,
       medName: med.name,
@@ -2728,7 +3158,7 @@ Rules:
           value={newMedication.name}
           onChange={handleNewMedChange}
           placeholder="Medication Name (e.g. Vitamin D)"
-          className="w-full p-3 border border-slate-200 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 focus:bg-white"
+          className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 dark:bg-slate-800 dark:text-white focus:bg-white dark:focus:bg-slate-700 text-text-main"
         />
         <input
           type="text"
@@ -2736,7 +3166,7 @@ Rules:
           value={newMedication.dose}
           onChange={handleNewMedChange}
           placeholder="Dose (e.g. 1000 IU or 1 tab)"
-          className="w-full p-3 border border-slate-200 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 focus:bg-white"
+          className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all bg-slate-50 dark:bg-slate-800 dark:text-white focus:bg-white dark:focus:bg-slate-700 text-text-main"
         />
       </div>
 
@@ -2839,25 +3269,46 @@ Rules:
         </p>
 
         <div className="space-y-2">
-          {newMedication.times.map((time, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => handleTimeChange(index, e.target.value)}
-                className="p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
-              {newMedication.times.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => handleRemoveTime(index)}
-                  className="px-2 py-1 text-xs rounded-lg border border-red-200 text-red-500 hover:bg-red-50"
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          ))}
+          {newMedication.times.map((time, index) => {
+            const { time24, time12 } = formatTimeWithBoth(time);
+            return (
+              <div key={index} className="flex items-start gap-2">
+                <div className="flex flex-col items-center">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={time}
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/[^0-9:]/g, '');
+                      // Auto-insert colon after 2 digits if not present
+                      if (val.length === 2 && !val.includes(':')) {
+                        val = val + ':';
+                      }
+                      // Limit to 5 characters (HH:mm)
+                      if (val.length <= 5) {
+                        handleTimeChange(index, val);
+                      }
+                    }}
+                    placeholder="HH:mm"
+                    maxLength={5}
+                    className="p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary font-mono text-lg w-24 text-center"
+                  />
+                  {time12 && (
+                    <span className="text-xs text-text-muted dark:text-slate-400 mt-1">({time12})</span>
+                  )}
+                </div>
+                {newMedication.times.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTime(index)}
+                    className="px-2 py-1 text-xs rounded-lg border border-red-200 text-red-500 hover:bg-red-50 mt-2"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <button
@@ -2868,6 +3319,42 @@ Rules:
           + Add another time
         </button>
       </div>
+
+      {/* Days of week selection */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-text-muted dark:text-slate-400">
+          Which days should you take it?
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => {
+            const isSelected = newMedication.days.includes(day);
+            return (
+              <button
+                key={day}
+                type="button"
+                onClick={() => {
+                  setNewMedication(prev => ({
+                    ...prev,
+                    days: isSelected
+                      ? prev.days.filter(d => d !== day)
+                      : [...prev.days, day]
+                  }));
+                }}
+                className={`px-3 py-2 text-xs font-medium rounded-lg border transition-all ${isSelected
+                  ? 'bg-primary text-white border-primary shadow-sm'
+                  : 'bg-slate-50 text-text-muted border-slate-200 hover:border-primary/50 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300'
+                  }`}
+              >
+                {day}
+              </button>
+            );
+          })}
+        </div>
+        {newMedication.days.length === 0 && (
+          <p className="text-xs text-red-500">Please select at least one day</p>
+        )}
+      </div>
+
 
       {/* Save / Update button */}
       <div className="pt-2 flex justify-end">
@@ -2905,6 +3392,10 @@ Rules:
         Array.isArray(med.times) && med.times.length
           ? med.times
           : ['08:00'],
+      days:
+        Array.isArray(med.days) && med.days.length
+          ? med.days
+          : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     });
 
     // We're editing, not scanning a new prescription
@@ -2959,17 +3450,17 @@ Rules:
                 // closing
                 setIsAdding(false);
                 setEditingMedId(null);
-                setNewMedication({ name: '', dose: '', times: ['08:00'] });
+                setNewMedication({ name: '', dose: '', times: ['08:00'], days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] });
                 setPrescriptionImage(null);
               } else {
                 // opening fresh add form
                 setIsAdding(true);
                 setEditingMedId(null);
-                setNewMedication({ name: '', dose: '', times: ['08:00'] });
+                setNewMedication({ name: '', dose: '', times: ['08:00'], days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] });
                 setPrescriptionImage(null);
               }
             }}
-            className={`flex items-center px-4 py-2 rounded-xl font-medium transition-all duration-200 ${isAdding ? 'bg-slate-100 text-text-muted hover:bg-slate-200' : 'bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary-dark'}`}
+            className={`flex items-center px-4 py-2 rounded-xl font-medium transition-all duration-200 ${isAdding ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/50' : 'bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary-dark'}`}
           >
             {isAdding ? <X size={18} className="mr-2" /> : <Plus size={18} className="mr-2" />}
             {isAdding ? 'Close Form' : 'Add Medication'}
@@ -3126,7 +3617,7 @@ Rules:
                       </div>
                     </div>
                     <p className="text-xs text-text-muted dark:text-slate-400 mb-2">{med.dose}</p>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1 mb-2">
                       {med.times.map(t => (
                         <span key={t} className="text-[10px] bg-slate-50 dark:bg-slate-700 text-text-muted dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-600 font-mono flex flex-col items-center">
                           <span>{formatTimeWithBoth(t).time24}</span>
@@ -3134,7 +3625,16 @@ Rules:
                         </span>
                       ))}
                     </div>
+                    {/* Days display */}
+                    <div className="flex flex-wrap gap-1">
+                      {(Array.isArray(med.days) && med.days.length > 0 ? med.days : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']).map(day => (
+                        <span key={day} className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                          {day}
+                        </span>
+                      ))}
+                    </div>
                   </div>
+
                 ))}
               </div>
             )}
@@ -3782,65 +4282,112 @@ Rules:
           </button>
         </div>
 
+<div
+  ref={chatContainerRef}
+  className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent min-h-0 animate-fade-in"
+>
+  {/* Messages */}
+  {visibleMessages.map((msg, index) => (
+    <div
+      key={index}
+      className={`flex animate-slide-up ${
+        msg.role === "user" ? "justify-end" : "justify-start"
+      }`}
+    >
+      <div
+        className={`flex max-w-[85%] ${
+          msg.role === "user" ? "flex-row-reverse" : "flex-row"
+        }`}
+      >
+        {/* Avatar */}
+        <div
+          className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 shadow-theme ${
+            msg.role === "user"
+              ? "bg-primary text-white ml-3"
+              : "bg-secondary/10 text-secondary mr-3"
+          }`}
+        >
+          {msg.role === "user" ? (
+            <Activity size={16} />
+          ) : (
+            <MessageSquare size={16} />
+          )}
+        </div>
 
-        <div className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent min-h-0">
-          {visibleMessages.map((msg, index) => (
-            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`flex max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 ${msg.role === 'user' ? 'bg-primary ml-3' : 'bg-secondary/10 mr-3'}`}>
-                  {msg.role === 'user'
-                    ? <Activity size={16} className="text-white" />
-                    : <MessageSquare size={16} className="text-secondary" />}
-                </div>
-                <div
-                  className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${msg.role === 'user'
-                    ? 'bg-primary text-white rounded-tr-none'
-                    : 'bg-slate-50 dark:bg-slate-800 text-text-main dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-none'
-                    }`}
+        {/* Bubble */}
+        <div
+          className={`p-4 rounded-2xl shadow-theme-lg text-[15px] leading-relaxed ${
+            msg.role === "user"
+              ? "bg-primary text-white rounded-tr-none"
+              : "bg-surface dark:bg-slate-800 text-text-main dark:text-slate-100 border border-border rounded-tl-none"
+          }`}
+        >
+          {/* Message Text */}
+          <div
+            className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+            dangerouslySetInnerHTML={{
+              __html: (() => {
+                let html = msg.text || "";
+                // Markdown formatting
+                html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+                html = html.replace(
+                  /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,
+                  "<em>$1</em>"
+                );
+                let listCounter = 0;
+                html = html.replace(
+                  /^[\s]*[-•*]\s+(.*)$/gm,
+                  (match, content) => {
+                    listCounter++;
+                    return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
+                  }
+                );
+                return html;
+              })(),
+            }}
+          />
+
+          {/* Sources */}
+          {msg.sources && msg.sources.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-xs text-text-muted space-y-1">
+              <div className="font-semibold text-primary">Sources</div>
+              {msg.sources.map((src, i) => (
+                <a
+                  key={i}
+                  href={src}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block truncate hover:underline text-blue-600 dark:text-blue-400"
                 >
-                  <div
-                    className="whitespace-pre-wrap"
-                    dangerouslySetInnerHTML={{
-                      __html: (() => {
-                        let html = msg.text || '';
-                        // Convert **bold** to <strong>
-                        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                        // Convert *italic* to <em> (single asterisks)
-                        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
-                        // Convert bullet points to numbered list
-                        let listCounter = 0;
-                        html = html.replace(/^[\s]*[-•*]\s+(.*)$/gm, (match, content) => {
-                          listCounter++;
-                          return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
-                        });
-                        return html;
-                      })()
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {isChatLoading && (
-            <div className="flex justify-start">
-              <div className="flex max-w-[85%] flex-row">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3">
-                  <MessageSquare size={16} className="text-secondary" />
-                </div>
-                <div className="p-4 rounded-2xl rounded-tl-none bg-slate-50 border border-slate-100 shadow-sm">
-                  <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                </div>
-              </div>
+                  {src}
+                </a>
+              ))}
             </div>
           )}
-
-          <div ref={chatEndRef} />
         </div>
+      </div>
+    </div>
+  ))}
+
+  {/* Improved Typing Indicator */}
+  {isChatLoading && (
+    <div className="flex justify-start animate-slide-up">
+      <div className="flex max-w-[85%] flex-row">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3 text-secondary">
+          <MessageSquare size={16} />
+        </div>
+        <div className="p-4 rounded-2xl rounded-tl-none bg-surface border border-border shadow-theme">
+          <div className="flex space-x-2">
+            <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+            <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+            <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+</div>
+
 
         <form
           onSubmit={(e) => {
@@ -4018,6 +4565,385 @@ Rules:
     );
   };
 
+  // ===================== HEALTH PLAN TAB ================================
+
+  // --- CALENDAR API & WIDGET ---
+  const fetchCalendarEvents = async (year, month) => {
+    if (!googleAccessToken) return;
+
+    const startOfMonth = new Date(year, month, 1);
+    const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59);
+
+    const timeMin = startOfMonth.toISOString();
+    const timeMax = endOfMonth.toISOString();
+
+    try {
+      const response = await exponentialBackoffFetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true`,
+        {
+          headers: {
+            Authorization: `Bearer ${googleAccessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const busySet = new Set();
+        if (data.items) {
+          data.items.forEach(event => {
+            const start = event.start.dateTime || event.start.date; // dateTime for timed, date for all-day
+            if (start) {
+              const dateStr = start.substring(0, 10); // YYYY-MM-DD
+              busySet.add(dateStr);
+            }
+          });
+        }
+        setCalendarEvents(busySet);
+      }
+    } catch (e) {
+      console.error("Error fetching calendar events:", e);
+    }
+  };
+
+  // Fetch events when month changes or tab opens
+  useEffect(() => {
+    if (activeTab === 'health_plan' && googleAccessToken) {
+      fetchCalendarEvents(currentCalendarMonth.getFullYear(), currentCalendarMonth.getMonth());
+    }
+  }, [activeTab, googleAccessToken, currentCalendarMonth]);
+
+  const SimpleCalendar = ({ selectedDate, onSelect }) => {
+    const year = currentCalendarMonth.getFullYear();
+    const month = currentCalendarMonth.getMonth();
+
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday
+
+    const days = [];
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(<div key={`empty-${i}`} className="h-8 w-8" />);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, month, d);
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const isBusy = calendarEvents.has(dateStr);
+      const isSelected = selectedDate === dateStr;
+      const isToday = dateStr === getTodayDateKey();
+
+      days.push(
+        <button
+          key={d}
+          onClick={() => onSelect(dateStr)}
+          className={`h-8 w-8 rounded-full flex items-center justify-center text-xs relative transition-all
+            ${isSelected ? 'bg-primary text-white font-bold shadow-md' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-text-main dark:text-slate-200'}
+            ${isToday && !isSelected ? 'border border-primary text-primary font-bold' : ''}
+          `}
+        >
+          {d}
+          {isBusy && !isSelected && (
+            <span className="absolute bottom-1 w-1 h-1 bg-red-500 rounded-full"></span>
+          )}
+        </button>
+      );
+    }
+
+    const prevMonth = () => setCurrentCalendarMonth(new Date(year, month - 1, 1));
+    const nextMonth = () => setCurrentCalendarMonth(new Date(year, month + 1, 1));
+
+    return (
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 w-full max-w-xs mx-auto">
+        <div className="flex justify-between items-center mb-4">
+          <button onClick={prevMonth} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"><ChevronRight className="rotate-180" size={16} /></button>
+          <span className="font-bold text-sm text-text-main dark:text-white">
+            {currentCalendarMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+          </span>
+          <button onClick={nextMonth} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"><ChevronRight size={16} /></button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center mb-2">
+          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => <span key={d} className="text-[10px] font-bold text-text-muted">{d}</span>)}
+        </div>
+        <div className="grid grid-cols-7 gap-1 place-items-center">
+          {days}
+        </div>
+      </div>
+    );
+  };
+
+  const handleSaveHealthData = async () => {
+    if (!db || !userId) return;
+    setIsSavingHealthData(true);
+    try {
+      const currentWeek = getWeekNumber(new Date());
+      const weekDocRef = doc(db, `/artifacts/${appId}/users/${userId}/health_plan/week_${currentWeek}`);
+      await setDoc(weekDocRef, {
+        bp: weeklyBP,
+        sugar: weeklySugar,
+        spo2: weeklySpo2, // Added SpO2
+        updatedAt: Date.now()
+      }, { merge: true });
+
+      // Clear fields on save
+      setWeeklyBP({ systolic: '', diastolic: '' });
+      setWeeklySugar('');
+      setWeeklySpo2('');
+
+      alert("Health data saved successfully!");
+    } catch (e) {
+      console.error("Error saving health data:", e);
+      alert("Failed to save data.");
+    } finally {
+      setIsSavingHealthData(false);
+    }
+  };
+
+  const renderHealthPlanTab = () => {
+    const daysRemainingInWeek = 7 - new Date().getDay();
+
+    // Daily Progress Calculation
+    const stepsLeft = Math.max(0, DAILY_STEP_GOAL - (stepCount || 0));
+    const waterLeft = Math.max(0, hydrationGoal - hydration);
+
+    return (
+      <div className="p-6 space-y-8 animate-fade-in h-full overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
+              <Calendar size={28} className="mr-3 text-primary" />
+              My Health Plan
+            </h2>
+            <p className="text-text-muted dark:text-slate-400">
+              Stay on top of your health with structured reminders.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
+          {/* 1. DAILY SECTION */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Activity size={80} className="text-blue-500" />
+            </div>
+            <h3 className="text-lg font-bold text-blue-600 dark:text-blue-400 mb-4 flex items-center uppercase tracking-wider">
+              <Clock size={20} className="mr-2" /> Daily
+            </h3>
+            <div className="space-y-4">
+              {/* Walk Card */}
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800/50">
+                <div className="flex items-center mb-2">
+                  <div className="w-10 h-10 bg-blue-100 dark:bg-blue-800 rounded-full flex items-center justify-center mr-3 text-blue-600 dark:text-blue-300">
+                    <Footprints size={20} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-text-main dark:text-white">Walk 10,000 Steps</p>
+                    <p className="text-xs text-text-muted dark:text-slate-400">Reminder every 1.5 hours</p>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-1">
+                    {stepsLeft > 0 ? `${stepsLeft.toLocaleString()} steps left!` : "Goal Reached! 🎉"}
+                  </p>
+                  <div className="w-full bg-blue-200 dark:bg-blue-900 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-blue-500 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, ((stepCount || 0) / DAILY_STEP_GOAL) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1 italic">
+                    {stepsLeft > 5000 ? "Keep moving, you got this!" : stepsLeft > 0 ? "Almost there, keep walking!" : "Great job today!"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Water Card */}
+              <div className="p-4 bg-cyan-50 dark:bg-cyan-900/20 rounded-2xl border border-cyan-100 dark:border-cyan-800/50">
+                <div className="flex items-center mb-2">
+                  <div className="w-10 h-10 bg-cyan-100 dark:bg-cyan-800 rounded-full flex items-center justify-center mr-3 text-cyan-600 dark:text-cyan-300">
+                    <Droplet size={20} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-text-main dark:text-white">Drink 3L Water</p>
+                    <p className="text-xs text-text-muted dark:text-slate-400">Reminder every 1.5 hours</p>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <p className="text-sm font-semibold text-cyan-600 dark:text-cyan-400 mb-1">
+                    {waterLeft > 0 ? `${waterLeft}ml left to drink` : "Hydration Goal Met! 💧"}
+                  </p>
+                  <div className="w-full bg-cyan-200 dark:bg-cyan-900 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-cyan-500 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, (hydration / hydrationGoal) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1 italic">
+                    {waterLeft > 1000 ? "Stay hydrated for energy!" : waterLeft > 0 ? "Just a few more glasses!" : "Well done!"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. WEEKLY SECTION */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Calendar size={80} className="text-purple-500" />
+            </div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-purple-600 dark:text-purple-400 flex items-center uppercase tracking-wider">
+                <Calendar size={20} className="mr-2" /> Weekly
+              </h3>
+              <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 text-xs font-bold rounded-full">
+                {daysRemainingInWeek} Days Left
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-100 dark:border-purple-800/50">
+                <div className="flex items-center mb-3">
+                  <Heart size={20} className="text-purple-500 mr-2" />
+                  <span className="font-semibold text-text-main dark:text-white">Blood Pressure</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Sys"
+                    value={weeklyBP.systolic}
+                    onChange={(e) => setWeeklyBP({ ...weeklyBP, systolic: e.target.value })}
+                    className="w-full p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                  />
+                  <span className="self-center text-slate-400">/</span>
+                  <input
+                    type="number"
+                    placeholder="Dia"
+                    value={weeklyBP.diastolic}
+                    onChange={(e) => setWeeklyBP({ ...weeklyBP, diastolic: e.target.value })}
+                    className="w-full p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-100 dark:border-purple-800/50">
+                <div className="flex items-center mb-3">
+                  <Activity size={20} className="text-purple-500 mr-2" />
+                  <span className="font-semibold text-text-main dark:text-white">Blood Sugar</span>
+                </div>
+                <input
+                  type="number"
+                  placeholder="mg/dL"
+                  value={weeklySugar}
+                  onChange={(e) => setWeeklySugar(e.target.value)}
+                  className="w-full p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                />
+              </div>
+
+              {/* SpO2 Field */}
+              <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-100 dark:border-purple-800/50">
+                <div className="flex items-center mb-3">
+                  <Activity size={20} className="text-purple-500 mr-2" />
+                  <span className="font-semibold text-text-main dark:text-white">SpO2</span>
+                </div>
+                <input
+                  type="number"
+                  placeholder="%"
+                  value={weeklySpo2}
+                  onChange={(e) => setWeeklySpo2(e.target.value)}
+                  className="w-full p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveHealthData}
+                disabled={isSavingHealthData}
+                className="w-full py-3 bg-purple-600 text-white rounded-xl font-bold shadow-lg shadow-purple-200 dark:shadow-purple-900/20 hover:bg-purple-700 transition-all flex items-center justify-center"
+              >
+                {isSavingHealthData ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" /> : <Save size={18} className="mr-2" />}
+                Save Weekly Data
+              </button>
+            </div>
+          </div>
+
+          {/* 3. QUARTERLY SECTION */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <User size={80} className="text-orange-500" />
+            </div>
+            <h3 className="text-lg font-bold text-orange-600 dark:text-orange-400 mb-4 flex items-center uppercase tracking-wider">
+              <Clock size={20} className="mr-2" /> Quarterly
+            </h3>
+            <div className="flex flex-col items-center">
+              <p className="text-sm text-text-muted dark:text-slate-400 mb-4 text-center">
+                Select a date for your doctor's visit. Dots indicate busy days.
+              </p>
+              <SimpleCalendar selectedDate={selectedQuarterlyDate} onSelect={setSelectedQuarterlyDate} />
+
+              <a
+                href={`https://calendar.google.com/calendar/r/eventedit?text=Doctor+Visit&dates=${selectedQuarterlyDate ? selectedQuarterlyDate.replace(/-/g, '') : ''}/${selectedQuarterlyDate ? selectedQuarterlyDate.replace(/-/g, '') : ''}&details=Quarterly+Checkup`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`mt-4 w-full py-3 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2
+                  ${selectedQuarterlyDate
+                    ? 'bg-orange-500 text-white  hover:bg-orange-600'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'}
+                `}
+                onClick={(e) => !selectedQuarterlyDate && e.preventDefault()}
+              >
+                <Calendar size={18} />
+                Book on Google Calendar
+              </a>
+            </div>
+          </div>
+
+          {/* 4. YEARLY SECTION */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Activity size={80} className="text-green-500" />
+            </div>
+            <h3 className="text-lg font-bold text-green-600 dark:text-green-400 mb-4 flex items-center uppercase tracking-wider">
+              <Calendar size={20} className="mr-2" /> Yearly
+            </h3>
+
+            <div className="flex flex-col items-center">
+              <p className="text-sm text-text-muted dark:text-slate-400 mb-4 text-center">
+                Schedule your full body checkup.
+              </p>
+              <SimpleCalendar selectedDate={selectedYearlyDate} onSelect={setSelectedYearlyDate} />
+
+              <a
+                href={`https://calendar.google.com/calendar/r/eventedit?text=Full+Body+Checkup&dates=${selectedYearlyDate ? selectedYearlyDate.replace(/-/g, '') : ''}/${selectedYearlyDate ? selectedYearlyDate.replace(/-/g, '') : ''}&details=Recommended+Tests:+CBC,+Lipid+Profile,+Thyroid,+Liver+Function,+Kidney+Function,+Vitamin+D/B12`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`mt-4 w-full py-3 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2
+                  ${selectedYearlyDate
+                    ? 'bg-green-500 text-white  hover:bg-green-600'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'}
+                `}
+                onClick={(e) => !selectedYearlyDate && e.preventDefault()}
+              >
+                <Calendar size={18} />
+                Book on Google Calendar
+              </a>
+
+              <div className="mt-6 w-full bg-green-50 dark:bg-green-900/20 p-4 rounded-2xl border border-green-100 dark:border-green-800/50">
+                <h4 className="font-bold text-green-700 dark:text-green-300 mb-2 text-sm">Recommended Tests:</h4>
+                <ul className="text-xs text-text-muted dark:text-slate-400 grid grid-cols-2 gap-1 list-disc pl-4">
+                  <li>CBC (Blood Count)</li>
+                  <li>Lipid Profile</li>
+                  <li>Thyroid Profile</li>
+                  <li>Liver Function</li>
+                  <li>Kidney Function</li>
+                  <li>Vitamin D & B12</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   /** ---------------------------------------
    * Error banner (unchanged)
    * -------------------------------------- */
@@ -4120,8 +5046,8 @@ Rules:
           <button
             onClick={() => setIsEditingEmergency((prev) => !prev)}
             className={`flex items-center px-3 py-2 rounded-xl text-sm font-semibold border transition-all ${isEditingEmergency
-                ? 'bg-green-500 text-white border-green-500 hover:bg-green-600'
-                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700'
+              ? 'bg-green-500 text-white border-green-500 hover:bg-green-600'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
           >
             {isEditingEmergency ? (
@@ -4307,6 +5233,7 @@ Rules:
           <div className="flex bg-white dark:bg-slate-800 p-1.5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
             {[
               { id: 'reminders', icon: Bell, label: 'Reminders' },
+              { id: 'health_plan', icon: Calendar, label: 'Health Plan' },
               { id: 'activity', icon: Activity, label: 'Activity' },
               { id: 'chatbot', icon: MessageSquare, label: 'Chatbot' }
             ].map(tab => (
@@ -4347,12 +5274,14 @@ Rules:
               colorBlindMode={colorBlindMode}
               setColorBlindMode={setColorBlindMode}
               onCaregiverChange={handleCaregiverChange}
+              onBmiChange={setBmi}
             />
           </div>
 
           {/* Main Content */}
-          <div className={`flex-grow bg-surface dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden ${activeTab !== 'chatbot' ? 'min-h-[80vh]' : ''}`}>
+          <div className={`flex-grow bg-surface dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 overflow-hidden h-[100vh]${activeTab !== 'chatbot' ? 'min-h-[80vh] h' : ''}`}>
             {activeTab === 'reminders' && renderRemindersTab()}
+            {activeTab === 'health_plan' && renderHealthPlanTab()}
             {activeTab === 'activity' && renderActivityTab()}
             {activeTab === 'chatbot' && renderChatbotTab()}
             {activeTab === 'emergency' && renderEmergencyTab()}
