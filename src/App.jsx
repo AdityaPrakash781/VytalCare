@@ -2049,45 +2049,108 @@ const App = () => {
 
 
 
-  // One-click sync (does all fetches, shows explicit messages)
-  const syncAll = useCallback(async () => {
-    setIsSyncingAll(true);
-    setAssessmentResult(null);
-    try {
-      const results = await Promise.allSettled([
-        fetchSteps(),
-        fetchSleep(),
-        fetchWeeklySleep(),
-        fetchCalories(),
-        fetchDistance(),
-        fetchWeeklyDistance(),
-        fetchHeartRate(),
-        fetchSteps3h(),
-        fetchDistance3h()
+// One-click sync (does all fetches, stores daily row, then computes health score)
+const syncAll = useCallback(async () => {
+  setIsSyncingAll(true);
+  setAssessmentResult(null);
 
-      ]);
+  try {
+    const results = await Promise.allSettled([
+      fetchSteps(),         // 0
+      fetchSleep(),         // 1
+      fetchWeeklySleep(),   // 2 (not used in row)
+      fetchCalories(),      // 3
+      fetchDistance(),      // 4
+      fetchWeeklyDistance(),// 5 (not used in row)
+      fetchHeartRate(),     // 6
+      fetchSteps3h(),       // 7 (graph only)
+      fetchDistance3h()     // 8 (graph only)
+    ]);
 
-      // If every promise failed or returned empty values, show a generic banner
-      const someData =
-        (stepCount ?? 0) > 0 ||
-        (sleepHours ?? 0) > 0 ||
-        (calories ?? 0) > 0 ||
-        (parseFloat(distance) ?? 0) > 0 ||
-        (heartRate ?? null) !== null;
+    // --- Extract numeric values from today's fetch results ---
+    const safeNumber = (res, index) => {
+      if (!res[index] || res[index].status !== "fulfilled") return null;
+      const v = res[index].value;
+      return typeof v === "number" ? v : null;
+    };
 
-      if (!someData) {
-        // setError('Synced, but no metrics were available for today. Open Google Fit and sync your device, then try again.');
-      } else {
-        // setError({ type: 'success', message: 'Synced today’s data successfully.' });
-        calculateHealthScore();
-      }
+    const stepsValue     = safeNumber(results, 0);
+    const sleepValue     = safeNumber(results, 1);
+    const caloriesValue  = safeNumber(results, 3) !== null ? Math.round(safeNumber(results, 3)) : null;
+    const distanceValue  = safeNumber(results, 4);
+    const heartRateValue = safeNumber(results, 6);
 
-      return results;
-    } finally {
-      setIsSyncingAll(false);
+    // --- Health Plan vitals from weekly tab (empty -> null) ---
+    const bpSystolic   = weeklyBP?.systolic ? Number(weeklyBP.systolic) : null;
+    const bpDiastolic  = weeklyBP?.diastolic ? Number(weeklyBP.diastolic) : null;
+    const sugarMgDl    = weeklySugar ? Number(weeklySugar) : null;
+    const spo2Percent  = weeklySpo2 ? Number(weeklySpo2) : null;
+
+    // --- Persist one row per day for ML: /daily_metrics/YYYY-MM-DD ---
+    if (db && userId) {
+      const todayKey = getTodayDateKey();
+      const metricsRef = doc(
+        db,
+        `/artifacts/${appId}/users/${userId}/daily_metrics/${todayKey}`
+      );
+
+      await setDoc(
+  metricsRef,
+  {
+    userId,
+    date: todayKey,
+
+    steps: stepsValue,
+    sleepHours: sleepValue,
+    calories: caloriesValue,
+    distanceKm: distanceValue,
+    heartRateBpm: heartRateValue,
+
+    updatedAt: Date.now()
+  },
+  { merge: true }
+);
+}
+
+    // --- Decide if we have "some data" to run health score on ---
+    const someData =
+      (stepsValue ?? 0) > 0 ||
+      (sleepValue ?? 0) > 0 ||
+      (caloriesValue ?? 0) > 0 ||
+      (distanceValue ?? 0) > 0 ||
+      heartRateValue !== null;
+
+    if (someData) {
+      // use state-backed trends etc.
+      calculateHealthScore();
+    } else {
+      // Optional: show a banner if you want
+      // setError('Synced, but no metrics were available for today. Open Google Fit and sync your device, then try again.');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [googleAccessToken, stepCount, sleepHours, calories, distance, heartRate, fetchSteps, fetchSleep, fetchCalories, fetchDistance, fetchHeartRate]); // Added fetch* dependencies to suppress linter warning
+
+    return results;
+  } finally {
+    setIsSyncingAll(false);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [
+  googleAccessToken,
+  fetchSteps,
+  fetchSleep,
+  fetchWeeklySleep,
+  fetchCalories,
+  fetchDistance,
+  fetchWeeklyDistance,
+  fetchHeartRate,
+  fetchSteps3h,
+  fetchDistance3h,
+  db,
+  userId,
+  weeklyBP,
+  weeklySugar,
+  weeklySpo2
+]);
+
 
   // Auto-sync: call once on login, and enable repeating sync when user presses Sync button
   useEffect(() => {
@@ -2106,7 +2169,6 @@ const App = () => {
     }
     return () => { if (interval) clearInterval(interval); };
   }, [isAutoSyncActive, googleAccessToken, syncAll]); // FIX 9: Added syncAll to dependency array
-
 
   /** ---------------------------------------
  * Assessment (updated to include hydration and better formatting)
