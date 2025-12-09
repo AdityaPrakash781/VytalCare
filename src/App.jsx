@@ -172,13 +172,24 @@ const HealthScoreRing = ({ score, size = 180 }) => {
   );
 };
 
-const BMIGauge = ({ bmi }) => {
-  const segments = [
-    { label: "Underweight", range: [10, 18.5], color: "#FB7185" }, // rose
-    { label: "Normal",      range: [18.5, 25], color: "#22C55E" }, // green
-    { label: "Overweight",  range: [25, 30],   color: "#FBBF24" }, // amber
-    { label: "Obesity",     range: [30, 40],   color: "#EF4444" }, // red
-  ];
+const BMIGauge = ({ bmi, theme, colorBlindMode }) => {
+  const isLight = theme === 'light';
+  const isColorBlind = colorBlindMode && colorBlindMode !== 'none';
+
+  // Palette changes for colour-blind modes
+  const segments = isColorBlind
+    ? [
+        { label: "Underweight", range: [10, 18.5], color: "#6366F1" }, // indigo
+        { label: "Normal",      range: [18.5, 25], color: "#22C55E" }, // green
+        { label: "Overweight",  range: [25, 30],   color: "#EC4899" }, // pink
+        { label: "Obesity",     range: [30, 40],   color: "#F97316" }, // orange
+      ]
+    : [
+        { label: "Underweight", range: [10, 18.5], color: isLight ? "#F97373" : "#FB7185" },
+        { label: "Normal",      range: [18.5, 25], color: "#22C55E" },
+        { label: "Overweight",  range: [25, 30],   color: "#FBBF24" },
+        { label: "Obesity",     range: [30, 40],   color: "#EF4444" },
+      ];
 
   const minBMI = 10;
   const maxBMI = 40;
@@ -186,24 +197,25 @@ const BMIGauge = ({ bmi }) => {
   const cx = 110;
   const cy = 110;
   const arcRadius = 80;
-  const scaleRadius = 100;         // where numbers sit (outer ring)
+  const scaleRadius = 100;
   const pointerLength = 70;
 
   const scaleValues = [10, 15, 20, 25, 30, 35, 40];
 
-  // Helper: map BMI value -> angle on semicircle (-π on left, 0 on right)
   const angleForValue = (val) => {
-    const ratio = (val - minBMI) / (maxBMI - minBMI); // 0..1
-    return ratio * Math.PI - Math.PI;                 // -π .. 0
+    const ratio = (val - minBMI) / (maxBMI - minBMI);
+    return ratio * Math.PI - Math.PI;
   };
 
-  // Clamp BMI for safety
   const numericBmi = bmi ? parseFloat(bmi) : minBMI;
   const clampedBmi = Math.min(maxBMI, Math.max(minBMI, numericBmi));
   const pointerAngle = angleForValue(clampedBmi);
 
   const pointerX = cx + pointerLength * Math.cos(pointerAngle);
   const pointerY = cy + pointerLength * Math.sin(pointerAngle);
+
+  const pointerColor = isLight ? "#0F172A" : "#E5E7EB";
+  const centerDotColor = isLight ?"#0F172A" : "#E5E7EB";
 
   return (
     <div className="flex flex-col items-center p-4">
@@ -232,7 +244,7 @@ const BMIGauge = ({ bmi }) => {
           );
         })}
 
-        {/* OUTER SCALE VALUES ALL AROUND (10..40) */}
+        {/* OUTER SCALE VALUES (10..40) */}
         {scaleValues.map((val) => {
           const a = angleForValue(val);
           const tx = cx + scaleRadius * Math.cos(a);
@@ -243,7 +255,7 @@ const BMIGauge = ({ bmi }) => {
               key={val}
               x={tx}
               y={ty}
-              fill="#E5E7EB"
+              fill={isLight ? "#4B5563" : "#E5E7EB"}
               fontSize="10"
               textAnchor="middle"
               alignmentBaseline="middle"
@@ -254,46 +266,48 @@ const BMIGauge = ({ bmi }) => {
           );
         })}
 
-        {/* POINTER – needle + dot */}
+        {/* POINTER – needle + dots */}
         <line
           x1={cx}
           y1={cy}
           x2={pointerX}
           y2={pointerY}
-          stroke="#0F172A"
+          stroke={pointerColor}
           strokeWidth="4"
           strokeLinecap="round"
         />
-        <circle cx={pointerX} cy={pointerY} r="5" fill="#0F172A" />
-        <circle cx={cx} cy={cy} r="6" fill="#0F172A" />
+        <circle cx={pointerX} cy={pointerY} r="5" fill={pointerColor} />
+        <circle cx={cx} cy={cy} r="6" fill={centerDotColor} />
       </svg>
 
-      <p className="mt-2 text-xl font-bold text-white">
+      <p className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
         BMI = {bmi}
       </p>
 
       {/* LEGEND */}
-      <div className="flex flex-wrap justify-center gap-3 mt-2 text-xs text-slate-300">
+      <div className="flex flex-wrap justify-center gap-3 mt-2 text-xs text-slate-700 dark:text-slate-300">
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm" style={{ background: "#FB7185" }} />
-          <span>Underweight</span>
+          <span className="w-3 h-3 rounded-sm" style={{ background: segments[0].color }} />
+          <span>{segments[0].label}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm" style={{ background: "#22C55E" }} />
-          <span>Normal</span>
+          <span className="w-3 h-3 rounded-sm" style={{ background: segments[1].color }} />
+          <span>{segments[1].label}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm" style={{ background: "#FBBF24" }} />
-          <span>Overweight</span>
+          <span className="w-3 h-3 rounded-sm" style={{ background: segments[2].color }} />
+          <span>{segments[2].label}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm" style={{ background: "#EF4444" }} />
-          <span>Obesity</span>
+          <span className="w-3 h-3 rounded-sm" style={{ background: segments[3].color }} />
+          <span>{segments[3].label}</span>
         </div>
       </div>
     </div>
   );
 };
+
+
 
 /** ---------------------------------------
  * Profile Section Component (UPDATED)
@@ -357,15 +371,41 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
             data.caregiverName || ''
           );
         }
-      } else if (onCaregiverChange) {
-        // No profile → clear caregiver contact in App
-        onCaregiverChange('', '');
+              // ✅ Also compute BMI from loaded height/weight
+        if (onBmiChange) {
+          const heightStr = data.userHeight;
+          const weightStr = data.userWeight;
+
+          if (heightStr && weightStr) {
+            const heightNum = parseFloat(String(heightStr).replace(/[^\d.]/g, ''));
+            const weightNum = parseFloat(String(weightStr).replace(/[^\d.]/g, ''));
+
+            if (heightNum && weightNum) {
+              const heightMeters = heightNum > 3 ? heightNum / 100 : heightNum;
+              if (heightMeters > 0) {
+                const bmiValue = weightNum / (heightMeters * heightMeters);
+                onBmiChange(bmiValue.toFixed(1));
+              } else {
+                onBmiChange(null);
+              }
+            } else {
+              onBmiChange(null);
+            }
+          } else {
+            onBmiChange(null);
+          }
+        }
+      } else {
+        // No profile → clear caregiver + BMI in App
+        if (onCaregiverChange) onCaregiverChange('', '');
+        if (onBmiChange) onBmiChange(null);
       }
 
       setLoading(false);
     });
+
     return () => unsubscribe();
-  }, [db, userId, appId, onCaregiverChange]);
+  }, [db, userId, appId, onCaregiverChange, onBmiChange]);
 
   // CHANGED: Write directly to users/{userId}
   const handleSave = async () => {
@@ -408,7 +448,9 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
 
   if (loading) return <div className="p-4"><LoadingSpinner /></div>;
 
-  return (
+return (
+  <div className="space-y-4">
+    {/* CARD 1: Profile + Caregiver */}
     <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
       <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
         <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
@@ -417,14 +459,19 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
         </h2>
         <button
           onClick={isEditing ? handleSave : () => setIsEditing(true)}
-          className={`p-2 rounded-xl transition-all duration-200 ${isEditing ? 'bg-green-500 text-white shadow-md shadow-green-200 hover:bg-green-600' : 'bg-white text-slate-400 hover:text-primary hover:bg-primary/5 border border-slate-200 dark:bg-slate-700 dark:border-slate-600'}`}
-          title={isEditing ? "Save Profile" : "Edit Profile"}
+          className={`p-2 rounded-xl transition-all duration-200 ${
+            isEditing
+              ? 'bg-green-500 text-white shadow-md shadow-green-200 hover:bg-green-600'
+              : 'bg-white text-slate-400 hover:text-primary hover:bg-primary/5 border border-slate-200 dark:bg-slate-700 dark:border-slate-600'
+          }`}
+          title={isEditing ? 'Save Profile' : 'Edit Profile'}
         >
           {isEditing ? <Save size={18} /> : <Edit2 size={18} />}
         </button>
       </div>
 
       <div className="p-6 overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-slate-200">
+        {/* User Details */}
         <div className="mb-8">
           <h3 className="text-sm font-bold text-primary dark:text-slate-300 mb-4 flex items-center bg-slate-100 dark:bg-slate-800 p-2 rounded-lg dark:border dark:border-slate-700">
             User Details
@@ -441,6 +488,7 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
           </div>
         </div>
 
+        {/* Caregiver Details */}
         <div>
           <h3 className="text-sm font-bold text-secondary dark:text-slate-300 mb-4 flex items-center bg-slate-100 dark:bg-slate-800 p-2 rounded-lg dark:border dark:border-slate-700">
             Caregiver Details
@@ -449,123 +497,165 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
           <InputField label="Phone No" name="caregiverPhone" type="tel" placeholder="+1 987 654 321" isEditing={isEditing} profile={profile} handleChange={handleChange} />
           <InputField label="Email" name="caregiverEmail" type="email" placeholder="jane@example.com" isEditing={isEditing} profile={profile} handleChange={handleChange} />
         </div>
-
-        <div className="mt-8">
-          <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center bg-slate-100 p-2 rounded-lg dark:bg-slate-800 dark:text-slate-300">
-            Accessibility
-          </h3>
-          <div className="flex gap-2 relative mb-4">
-            <button
-              onClick={() => {
-                setTheme('light');
-                setColorBlindMode('none');
-                setShowColorBlindMenu(false);
-              }}
-              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${theme === 'light' && colorBlindMode === 'none' ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'}`}
-              aria-pressed={theme === 'light' && colorBlindMode === 'none'}
-            >
-              <Sun size={20} />
-              <span className="text-xs font-semibold">Light</span>
-            </button>
-            <button
-              onClick={() => {
-                setTheme('dark');
-                setColorBlindMode('none');
-                setShowColorBlindMenu(false);
-              }}
-              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${theme === 'dark' && colorBlindMode === 'none' ? 'bg-slate-800 text-white border-slate-700 shadow-lg' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'}`}
-              aria-pressed={theme === 'dark' && colorBlindMode === 'none'}
-            >
-              <Moon size={20} />
-              <span className="text-xs font-semibold">Dark</span>
-            </button>
-
-            <button
-              onClick={() => setShowColorBlindMenu(!showColorBlindMenu)}
-              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${colorBlindMode !== 'none' ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : showColorBlindMenu ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'}`}
-              aria-expanded={showColorBlindMenu}
-            >
-              <Eye size={20} />
-              <span className="text-xs font-semibold">Color Blind</span>
-            </button>
-          </div>
-
-          {/* Inline Expandable Menu for Color Blind Options */}
-          {showColorBlindMenu && (
-            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-2 border border-slate-100 dark:border-slate-700 animate-fade-in space-y-1">
-              <button onClick={() => { setColorBlindMode('none'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'none' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <span>None</span>
-                {colorBlindMode === 'none' && <CheckCircle size={16} />}
-              </button>
-              <button onClick={() => { setColorBlindMode('protanopia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'protanopia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <div>
-                  <span className="block">Protanopia</span>
-                  <span className="text-xs text-slate-400 font-normal">Red-Weak Vision</span>
-                </div>
-                {colorBlindMode === 'protanopia' && <CheckCircle size={16} />}
-              </button>
-              <button onClick={() => { setColorBlindMode('deuteranopia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'deuteranopia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <div>
-                  <span className="block">Deuteranopia</span>
-                  <span className="text-xs text-slate-400 font-normal">Green-Weak Vision</span>
-                </div>
-                {colorBlindMode === 'deuteranopia' && <CheckCircle size={16} />}
-              </button>
-              <button onClick={() => { setColorBlindMode('tritanopia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'tritanopia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <div>
-                  <span className="block">Tritanopia</span>
-                  <span className="text-xs text-slate-400 font-normal">Blue-Yellow Weak</span>
-                </div>
-                {colorBlindMode === 'tritanopia' && <CheckCircle size={16} />}
-              </button>
-              <button onClick={() => { setColorBlindMode('achromatopsia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'achromatopsia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <div>
-                  <span className="block">Greyscale</span>
-                  <span className="text-xs text-slate-400 font-normal">No color perception</span>
-                </div>
-                {colorBlindMode === 'achromatopsia' && <CheckCircle size={16} />}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Google Calendar Section */}
-        <div className="mt-8">
-          <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center bg-slate-100 p-2 rounded-lg dark:bg-slate-800 dark:text-slate-300">
-            Google Calendar
-          </h3>
-          <a
-            href="https://calendar.google.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-between p-4 bg-white dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-primary/50 hover:shadow-md transition-all group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                <Calendar size={20} className="text-primary" />
-              </div>
-              <div>
-                <p className="font-semibold text-text-main dark:text-white">Open Google Calendar</p>
-                <p className="text-xs text-text-muted dark:text-slate-400">View your medication reminders</p>
-              </div>
-            </div>
-            <ExternalLink size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
-          </a>
-
-          {/* Sign Out Button */}
-          <button
-            onClick={() => {
-              localStorage.clear();
-              window.location.reload();
-            }}
-            className="mt-4 w-full flex items-center justify-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all text-sm font-medium"
-          >
-            Sign Out
-          </button>
-        </div>
       </div>
     </div>
-  );
+
+    {/* CARD 2: Google Calendar (separate container) */}
+    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
+      <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex items-center bg-slate-50/50 dark:bg-slate-900/50">
+        <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
+          <Calendar size={20} className="mr-2 text-primary" />
+          Google Calendar
+        </h2>
+      </div>
+
+      <div className="p-6 overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-slate-200">
+        <a
+          href="https://calendar.google.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-between p-4 bg-white dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-primary/50 hover:shadow-md transition-all group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+              <Calendar size={20} className="text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-text-main dark:text-white">
+                Open Google Calendar
+              </p>
+              <p className="text-xs text-text-muted dark:text-slate-400">
+                View your medication reminders
+              </p>
+            </div>
+          </div>
+          <ExternalLink
+            size={18}
+            className="text-slate-400 group-hover:text-primary transition-colors"
+          />
+        </a>
+      </div>
+    </div>
+
+    {/* CARD 3: Accessibility (separate container) */}
+    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col">
+      <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex items-center bg-slate-50/50 dark:bg-slate-900/50">
+        <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
+          <Eye size={20} className="mr-2 text-primary" />
+          Accessibility
+        </h2>
+      </div>
+
+      {/* NOTE: no overflow-y-auto / flex-grow here so the card can expand */}
+      <div className={`p-6 ${showColorBlindMenu ? 'pb-8' : ''}`}>
+        <div className="flex gap-2 mb-4">
+          {/* Light theme */}
+          <button
+            onClick={() => {
+              setTheme('light');
+              setColorBlindMode('none');
+              setShowColorBlindMenu(false);
+            }}
+            className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
+              theme === 'light' && colorBlindMode === 'none'
+                ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'
+            }`}
+            aria-pressed={theme === 'light' && colorBlindMode === 'none'}
+          >
+            <Sun size={20} />
+            <span className="text-xs font-semibold">Light</span>
+          </button>
+
+          {/* Dark theme */}
+          <button
+            onClick={() => {
+              setTheme('dark');
+              setColorBlindMode('none');
+              setShowColorBlindMenu(false);
+            }}
+            className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
+              theme === 'dark' && colorBlindMode === 'none'
+                ? 'bg-slate-900 text-white border-slate-600 shadow-lg shadow-slate-900/40'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'
+            }`}
+            aria-pressed={theme === 'dark' && colorBlindMode === 'none'}
+          >
+            <Moon size={20} />
+            <span className="text-xs font-semibold">Dark</span>
+          </button>
+
+          {/* Color blind menu toggle */}
+          <button
+            onClick={() => setShowColorBlindMenu(v => !v)}
+            className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
+              colorBlindMode !== 'none'
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-500/30'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'
+            }`}
+            aria-expanded={showColorBlindMenu}
+          >
+            <Eye size={20} />
+            <span className="text-xs font-semibold">Color Blind</span>
+          </button>
+        </div>
+
+        {showColorBlindMenu && (
+          <div className="mt-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">
+            <p className="text-sm font-semibold text-text-main dark:text-slate-100 mb-3">
+              Color Blind-Friendly Themes:
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'protanopia', label: 'Protanopia' },
+                { id: 'deuteranopia', label: 'Deuteranopia' },
+                { id: 'tritanopia', label: 'Tritanopia' },
+                { id: 'achromatopsia', label: 'Achromatopsia' }
+              ].map(mode => (
+                <button
+                  key={mode.id}
+                  onClick={() => {
+                    setColorBlindMode(mode.id);
+                    if (theme !== 'dark') setTheme('dark');
+                  }}
+                  className={`px-3 py-2 rounded-xl border text-xs font-medium text-left transition-all ${
+                    colorBlindMode === mode.id
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm shadow-emerald-500/40'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600'
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setColorBlindMode('none')}
+              className="mt-3 text-xs text-slate-500 dark:text-slate-400 underline hover:text-primary"
+            >
+              Reset color blind mode
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+
+
+    {/* CARD 4: Sign Out – only button, no header */}
+{/* SIGN OUT BUTTON — NO CONTAINER */}
+<button
+  onClick={() => {
+    localStorage.clear();
+    window.location.reload();
+  }}
+  className="w-full flex items-center justify-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 
+             text-red-600 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800 
+             hover:bg-red-100 dark:hover:bg-red-900/40 transition-all text-sm font-medium"
+>
+  Sign Out of VytalCare
+</button>
+
+</div>
+);
 };
 
 const InputField = ({ label, name, type = "text", placeholder, isEditing, profile, handleChange }) => (
@@ -3949,53 +4039,70 @@ Rules:
           )}
         </div>
       </div>
-      {/* Health Score Card */}
-      <div className="bg-white dark:bg-slate-800 p-10 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md
-     transition-shadow w-full flex justify-center">
+      {/* Health Score + BMI Row */}
+      <div className="grid grid-cols-1 xl:grid-cols-[2fr,1.2fr] gap-6 items-stretch">
+        {/* Health Score Card (left) */}
+        <div className="bg-white dark:bg-slate-800 p-10 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow w-full flex justify-center">
+          {/* CENTERED ROW WRAPPER */}
+          <div className="flex flex-row items-center justify-center gap-16 max-w-3xl w-full">
+            {/* LEFT — RING */}
+            <div className="flex-shrink-0">
+              <HealthScoreRing score={healthScore ?? 0} />
+            </div>
 
-        {/* CENTERED ROW WRAPPER */}
-        <div className="flex flex-row items-center justify-center gap-16 max-w-3xl w-full">
+            {/* RIGHT — TEXT */}
+            <div className="flex flex-col space-y-6 text-left">
+              {/* WHY THIS SCORE */}
+              {healthScoreExplanation.length > 0 && (
+                <div>
+                  <p className="font-semibold text-text-main dark:text-white text-lg mb-2">Why this score:</p>
+                  <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
+                    {healthScoreExplanation.map((line, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-lg">•</span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-          {/* LEFT — RING */}
-          <div className="flex-shrink-0">
-            <HealthScoreRing score={healthScore ?? 0} />
+              {/* HOW TO IMPROVE */}
+              {healthScoreSuggestions.length > 0 && (
+                <div>
+                  <p className="font-semibold text-text-main dark:text-white text-lg mb-2">How to improve:</p>
+                  <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
+                    {healthScoreSuggestions.map((line, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-lg">•</span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
+        </div>
 
-          {/* RIGHT — TEXT */}
-          <div className="flex flex-col space-y-6 text-left">
+          {/* BMI Card (right) */}
+          <div className="bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col items-center justify-center px-6 py-8">
+            <h3 className="text-lg font-semibold text-text-main dark:text-slate-100 mb-4 self-start">
+              BMI Overview
+            </h3>
 
-            {/* WHY THIS SCORE */}
-            {healthScoreExplanation.length > 0 && (
-              <div>
-                <p className="font-semibold text-text-main dark:text-white text-lg mb-2">Why this score:</p>
-                <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
-                  {healthScoreExplanation.map((line, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <span className="text-lg">•</span>
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* HOW TO IMPROVE */}
-            {healthScoreSuggestions.length > 0 && (
-              <div>
-                <p className="font-semibold text-text-main dark:text-white text-lg mb-2">How to improve:</p>
-                <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
-                  {healthScoreSuggestions.map((line, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <span className="text-lg">•</span>
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-          </div>
-
+          {bmi ? (
+            <>
+                  <BMIGauge bmi={bmi} theme={theme} colorBlindMode={colorBlindMode} />
+              <p className="mt-1 text-[11px] text-slate-400 text-center">
+                BMI is estimated from the height and weight in your profile.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-300 text-center">
+              Add your height and weight in the Profile section to see your BMI gauge here.
+            </p>
+          )}
         </div>
       </div>
 
@@ -4869,15 +4976,15 @@ Rules:
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <Calendar size={80} className="text-purple-500" />
             </div>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-purple-600 dark:text-purple-400 flex items-center uppercase tracking-wider">
-                <Calendar size={20} className="mr-2" /> Weekly
-              </h3>
-              <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 text-xs font-bold rounded-full">
-                {daysRemainingInWeek} Days Left
-              </span>
-            </div>
+            <div className="flex items-center gap-3 mb-4">
+            <h3 className="text-lg font-bold text-purple-600 dark:text-purple-400 flex items-center uppercase tracking-wider">
+              <Calendar size={20} className="mr-2" /> Weekly
+            </h3>
 
+            <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 text-xs font-bold rounded-full">
+              {daysRemainingInWeek} Days Left
+            </span>
+          </div>
             <div className="space-y-4">
               <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-100 dark:border-purple-800/50">
                 <div className="flex items-center mb-3">
