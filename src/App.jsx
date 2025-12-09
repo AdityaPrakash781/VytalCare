@@ -3212,7 +3212,15 @@ Rules:
         )}
       </div>
 
+      {/* 30-Day Google Calendar Sync Notice */}
+      <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+        <p className="text-xs text-blue-700 dark:text-blue-300">
+          <span className="font-semibold">📅 Note:</span> Medications added will be synced to your Google Calendar for 30 days. After 30 days, you'll need to add the medication again to continue receiving reminders.
+        </p>
+      </div>  
+
       {/* Name + Dose */}
+
       <div className="space-y-3">
         <input
           type="text"
@@ -3567,12 +3575,17 @@ Rules:
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Timeline Column */}
           <div className="lg:col-span-2 space-y-6">
-            <h3 className="text-lg font-bold flex items-center text-text-main dark:text-white">
-              <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center mr-3 text-primary">
-                <Calendar size={18} />
-              </div>
-              Today's Timeline
-            </h3>
+            <div>
+              <h3 className="text-lg font-bold flex items-center text-text-main dark:text-white">
+                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center mr-3 text-primary">
+                  <Calendar size={18} />
+                </div>
+                Today's Timeline
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 ml-11">(Synced to Google Calendar for 30 days)</p>
+            </div>
+
+
 
             {isLoading ? (
               <LoadingSpinner />
@@ -3650,9 +3663,12 @@ Rules:
             )}
           </div>
 
-          {/* All Medications Sidebar */}
+{/* All Medications Sidebar */}
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-text-main dark:text-white">All Prescriptions</h3>
+            <div>
+              <h3 className="text-lg font-bold text-text-main dark:text-white">All Prescriptions</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">(30-day Google Calendar sync)</p>
+            </div>
             {medications.length === 0 ? (
               <p className="text-text-muted italic text-sm">You have no saved medications.</p>
             ) : (
@@ -3686,7 +3702,7 @@ Rules:
                           <span className="text-[8px] opacity-70">({formatTimeWithBoth(t).time12})</span>
                         </span>
                       ))}
-                    </div>
+                    </div>
                     {/* Days display */}
                     <div className="flex flex-wrap gap-1">
                       {(Array.isArray(med.days) && med.days.length > 0 ? med.days : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']).map(day => (
