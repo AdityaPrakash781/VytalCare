@@ -1,11 +1,23 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "api/chat-rag.js", "use": "@vercel/node" },
-    { "src": "dist/**/*", "use": "@vercel/static" }
-  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs20.x",
+      "memory": 1024,
+      "maxDuration": 20
+    }
+  },
   "routes": [
-    { "src": "/api/chat-rag", "dest": "/api/chat-rag.js" },
-    { "src": "/(.*)", "dest": "/dist/$1" }
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }
