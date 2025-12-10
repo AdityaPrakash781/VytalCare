@@ -7,7 +7,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Legend, Area
 } from 'recharts';
-import appIcon from "./assets/iconn.png";
+import appIcon from "./assets/iconn.webp";
 
 
 
@@ -172,13 +172,24 @@ const HealthScoreRing = ({ score, size = 180 }) => {
   );
 };
 
-const BMIGauge = ({ bmi }) => {
-  const segments = [
-    { label: "Underweight", range: [10, 18.5], color: "#FB7185" }, // rose
-    { label: "Normal",      range: [18.5, 25], color: "#22C55E" }, // green
-    { label: "Overweight",  range: [25, 30],   color: "#FBBF24" }, // amber
-    { label: "Obesity",     range: [30, 40],   color: "#EF4444" }, // red
-  ];
+const BMIGauge = ({ bmi, theme, colorBlindMode }) => {
+  const isLight = theme === 'light';
+  const isColorBlind = colorBlindMode && colorBlindMode !== 'none';
+
+  // Palette changes for colour-blind modes
+  const segments = isColorBlind
+    ? [
+      { label: "Underweight", range: [10, 18.5], color: "#6366F1" }, // indigo
+      { label: "Normal", range: [18.5, 25], color: "#22C55E" }, // green
+      { label: "Overweight", range: [25, 30], color: "#EC4899" }, // pink
+      { label: "Obesity", range: [30, 40], color: "#F97316" }, // orange
+    ]
+    : [
+      { label: "Underweight", range: [10, 18.5], color: isLight ? "#F97373" : "#FB7185" },
+      { label: "Normal", range: [18.5, 25], color: "#22C55E" },
+      { label: "Overweight", range: [25, 30], color: "#FBBF24" },
+      { label: "Obesity", range: [30, 40], color: "#EF4444" },
+    ];
 
   const minBMI = 10;
   const maxBMI = 40;
@@ -186,24 +197,25 @@ const BMIGauge = ({ bmi }) => {
   const cx = 110;
   const cy = 110;
   const arcRadius = 80;
-  const scaleRadius = 100;         // where numbers sit (outer ring)
+  const scaleRadius = 100;
   const pointerLength = 70;
 
   const scaleValues = [10, 15, 20, 25, 30, 35, 40];
 
-  // Helper: map BMI value -> angle on semicircle (-π on left, 0 on right)
   const angleForValue = (val) => {
-    const ratio = (val - minBMI) / (maxBMI - minBMI); // 0..1
-    return ratio * Math.PI - Math.PI;                 // -π .. 0
+    const ratio = (val - minBMI) / (maxBMI - minBMI);
+    return ratio * Math.PI - Math.PI;
   };
 
-  // Clamp BMI for safety
   const numericBmi = bmi ? parseFloat(bmi) : minBMI;
   const clampedBmi = Math.min(maxBMI, Math.max(minBMI, numericBmi));
   const pointerAngle = angleForValue(clampedBmi);
 
   const pointerX = cx + pointerLength * Math.cos(pointerAngle);
   const pointerY = cy + pointerLength * Math.sin(pointerAngle);
+
+  const pointerColor = isLight ? "#0F172A" : "#E5E7EB";
+  const centerDotColor = isLight ? "#0F172A" : "#E5E7EB";
 
   return (
     <div className="flex flex-col items-center p-4">
@@ -232,7 +244,7 @@ const BMIGauge = ({ bmi }) => {
           );
         })}
 
-        {/* OUTER SCALE VALUES ALL AROUND (10..40) */}
+        {/* OUTER SCALE VALUES (10..40) */}
         {scaleValues.map((val) => {
           const a = angleForValue(val);
           const tx = cx + scaleRadius * Math.cos(a);
@@ -243,7 +255,7 @@ const BMIGauge = ({ bmi }) => {
               key={val}
               x={tx}
               y={ty}
-              fill="#E5E7EB"
+              fill={isLight ? "#4B5563" : "#E5E7EB"}
               fontSize="10"
               textAnchor="middle"
               alignmentBaseline="middle"
@@ -254,46 +266,48 @@ const BMIGauge = ({ bmi }) => {
           );
         })}
 
-        {/* POINTER – needle + dot */}
+        {/* POINTER – needle + dots */}
         <line
           x1={cx}
           y1={cy}
           x2={pointerX}
           y2={pointerY}
-          stroke="#0F172A"
+          stroke={pointerColor}
           strokeWidth="4"
           strokeLinecap="round"
         />
-        <circle cx={pointerX} cy={pointerY} r="5" fill="#0F172A" />
-        <circle cx={cx} cy={cy} r="6" fill="#0F172A" />
+        <circle cx={pointerX} cy={pointerY} r="5" fill={pointerColor} />
+        <circle cx={cx} cy={cy} r="6" fill={centerDotColor} />
       </svg>
 
-      <p className="mt-2 text-xl font-bold text-white">
+      <p className="mt-2 text-xl font-bold text-slate-900 dark:text-white">
         BMI = {bmi}
       </p>
 
       {/* LEGEND */}
-      <div className="flex flex-wrap justify-center gap-3 mt-2 text-xs text-slate-300">
+      <div className="flex flex-wrap justify-center gap-3 mt-2 text-xs text-slate-700 dark:text-slate-300">
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm" style={{ background: "#FB7185" }} />
-          <span>Underweight</span>
+          <span className="w-3 h-3 rounded-sm" style={{ background: segments[0].color }} />
+          <span>{segments[0].label}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm" style={{ background: "#22C55E" }} />
-          <span>Normal</span>
+          <span className="w-3 h-3 rounded-sm" style={{ background: segments[1].color }} />
+          <span>{segments[1].label}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm" style={{ background: "#FBBF24" }} />
-          <span>Overweight</span>
+          <span className="w-3 h-3 rounded-sm" style={{ background: segments[2].color }} />
+          <span>{segments[2].label}</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm" style={{ background: "#EF4444" }} />
-          <span>Obesity</span>
+          <span className="w-3 h-3 rounded-sm" style={{ background: segments[3].color }} />
+          <span>{segments[3].label}</span>
         </div>
       </div>
     </div>
   );
 };
+
+
 
 /** ---------------------------------------
  * Profile Section Component (UPDATED)
@@ -327,6 +341,9 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
     caregiverEmail: ''
   });
   const [loading, setLoading] = useState(true);
+  // Easter egg: 5 taps on Profile icon -> open YouTube video
+  const [profileIconClicks, setProfileIconClicks] = useState(0);
+  const profileClickTimerRef = useRef(null);
 
   // CHANGED: Read directly from users/{userId}
   useEffect(() => {
@@ -357,15 +374,41 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
             data.caregiverName || ''
           );
         }
-      } else if (onCaregiverChange) {
-        // No profile → clear caregiver contact in App
-        onCaregiverChange('', '');
+        // ✅ Also compute BMI from loaded height/weight
+        if (onBmiChange) {
+          const heightStr = data.userHeight;
+          const weightStr = data.userWeight;
+
+          if (heightStr && weightStr) {
+            const heightNum = parseFloat(String(heightStr).replace(/[^\d.]/g, ''));
+            const weightNum = parseFloat(String(weightStr).replace(/[^\d.]/g, ''));
+
+            if (heightNum && weightNum) {
+              const heightMeters = heightNum > 3 ? heightNum / 100 : heightNum;
+              if (heightMeters > 0) {
+                const bmiValue = weightNum / (heightMeters * heightMeters);
+                onBmiChange(bmiValue.toFixed(1));
+              } else {
+                onBmiChange(null);
+              }
+            } else {
+              onBmiChange(null);
+            }
+          } else {
+            onBmiChange(null);
+          }
+        }
+      } else {
+        // No profile → clear caregiver + BMI in App
+        if (onCaregiverChange) onCaregiverChange('', '');
+        if (onBmiChange) onBmiChange(null);
       }
 
       setLoading(false);
     });
+
     return () => unsubscribe();
-  }, [db, userId, appId, onCaregiverChange]);
+  }, [db, userId, appId, onCaregiverChange, onBmiChange]);
 
   // CHANGED: Write directly to users/{userId}
   const handleSave = async () => {
@@ -406,134 +449,115 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
     });
   };
 
+  const handleProfileIconClick = () => {
+    // reset timer each tap
+    if (profileClickTimerRef.current) {
+      clearTimeout(profileClickTimerRef.current);
+    }
+
+    setProfileIconClicks((prev) => {
+      const next = prev + 1;
+
+      // 5 quick taps = trigger easter egg
+      if (next >= 5) {
+        window.open(
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ", // your secret video
+          "_blank",
+          "noopener,noreferrer"
+        );
+        return 0; // reset count
+      }
+
+      return next;
+    });
+
+    // if user pauses >1.5s, reset counter
+    profileClickTimerRef.current = setTimeout(() => {
+      setProfileIconClicks(0);
+      profileClickTimerRef.current = null;
+    }, 1500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (profileClickTimerRef.current) {
+        clearTimeout(profileClickTimerRef.current);
+      }
+    };
+  }, []);
+
+
   if (loading) return <div className="p-4"><LoadingSpinner /></div>;
 
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
-      <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
-        <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
-          <User size={20} className="mr-2 text-primary" />
-          Profile
-        </h2>
-        <button
-          onClick={isEditing ? handleSave : () => setIsEditing(true)}
-          className={`p-2 rounded-xl transition-all duration-200 ${isEditing ? 'bg-green-500 text-white shadow-md shadow-green-200 hover:bg-green-600' : 'bg-white text-slate-400 hover:text-primary hover:bg-primary/5 border border-slate-200 dark:bg-slate-700 dark:border-slate-600'}`}
-          title={isEditing ? "Save Profile" : "Edit Profile"}
-        >
-          {isEditing ? <Save size={18} /> : <Edit2 size={18} />}
-        </button>
+    <div className="space-y-4">
+      {/* CARD 1: Profile + Caregiver */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
+        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+          <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
+            <button
+              type="button"
+              onClick={handleProfileIconClick}
+              className="mr-2 -ml-1 rounded-full p-1 text-primary hover:bg-primary/10 active:scale-95 transition"
+              title="Profile"
+            >
+              <User size={20} />
+            </button>
+            Profile
+          </h2>
+
+          <button
+            onClick={isEditing ? handleSave : () => setIsEditing(true)}
+            className={`p-2 rounded-xl transition-all duration-200 ${isEditing
+              ? 'bg-green-500 text-white shadow-md shadow-green-200 hover:bg-green-600'
+              : 'bg-white text-slate-400 hover:text-primary hover:bg-primary/5 border border-slate-200 dark:bg-slate-700 dark:border-slate-600'
+              }`}
+            title={isEditing ? 'Save Profile' : 'Edit Profile'}
+          >
+            {isEditing ? <Save size={18} /> : <Edit2 size={18} />}
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-slate-200">
+          {/* User Details */}
+          <div className="mb-8">
+            <h3 className="text-sm font-bold text-primary dark:text-slate-300 mb-4 flex items-center bg-slate-100 dark:bg-slate-800 p-2 rounded-lg dark:border dark:border-slate-700">
+              User Details
+            </h3>
+            <InputField label="Name" name="userName" placeholder="John Doe" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+            <InputField label="Phone No" name="userPhone" type="tel" placeholder="+1 234 567 890" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+            <InputField label="Email ID" name="userEmail" type="email" placeholder="john@example.com" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+            <div className="grid grid-cols-2 gap-4">
+              <InputField label="Date of Birth" name="userDob" type="date" placeholder="YYYY-MM-DD" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+              <InputField label="Age" name="userAge" type="number" placeholder="30" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+              <InputField label="Sex" name="userSex" placeholder="M/F" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+              <InputField label="Height" name="userHeight" placeholder="175 cm" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+              <InputField label="Weight" name="userWeight" placeholder="70 kg" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+            </div>
+          </div>
+
+          {/* Caregiver Details */}
+          <div>
+            <h3 className="text-sm font-bold text-secondary dark:text-slate-300 mb-4 flex items-center bg-slate-100 dark:bg-slate-800 p-2 rounded-lg dark:border dark:border-slate-700">
+              Caregiver Details
+            </h3>
+            <InputField label="Name" name="caregiverName" placeholder="Jane Doe" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+            <InputField label="Phone No" name="caregiverPhone" type="tel" placeholder="+1 987 654 321" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+            <InputField label="Email" name="caregiverEmail" type="email" placeholder="jane@example.com" isEditing={isEditing} profile={profile} handleChange={handleChange} />
+          </div>
+        </div>
       </div>
 
-      <div className="p-6 overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-slate-200">
-        <div className="mb-8">
-          <h3 className="text-sm font-bold text-primary dark:text-slate-300 mb-4 flex items-center bg-slate-100 dark:bg-slate-800 p-2 rounded-lg dark:border dark:border-slate-700">
-            User Details
-          </h3>
-          <InputField label="Name" name="userName" placeholder="John Doe" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-          <InputField label="Phone No" name="userPhone" type="tel" placeholder="+1 234 567 890" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-          <InputField label="Email ID" name="userEmail" type="email" placeholder="john@example.com" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-          <div className="grid grid-cols-2 gap-4">
-            <InputField label="Date of Birth" name="userDob" type="date" placeholder="YYYY-MM-DD" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-            <InputField label="Age" name="userAge" type="number" placeholder="30" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-            <InputField label="Sex" name="userSex" placeholder="M/F" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-            <InputField label="Height" name="userHeight" placeholder="175 cm" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-            <InputField label="Weight" name="userWeight" placeholder="70 kg" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-sm font-bold text-secondary dark:text-slate-300 mb-4 flex items-center bg-slate-100 dark:bg-slate-800 p-2 rounded-lg dark:border dark:border-slate-700">
-            Caregiver Details
-          </h3>
-          <InputField label="Name" name="caregiverName" placeholder="Jane Doe" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-          <InputField label="Phone No" name="caregiverPhone" type="tel" placeholder="+1 987 654 321" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-          <InputField label="Email" name="caregiverEmail" type="email" placeholder="jane@example.com" isEditing={isEditing} profile={profile} handleChange={handleChange} />
-        </div>
-
-        <div className="mt-8">
-          <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center bg-slate-100 p-2 rounded-lg dark:bg-slate-800 dark:text-slate-300">
-            Accessibility
-          </h3>
-          <div className="flex gap-2 relative mb-4">
-            <button
-              onClick={() => {
-                setTheme('light');
-                setColorBlindMode('none');
-                setShowColorBlindMenu(false);
-              }}
-              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${theme === 'light' && colorBlindMode === 'none' ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'}`}
-              aria-pressed={theme === 'light' && colorBlindMode === 'none'}
-            >
-              <Sun size={20} />
-              <span className="text-xs font-semibold">Light</span>
-            </button>
-            <button
-              onClick={() => {
-                setTheme('dark');
-                setColorBlindMode('none');
-                setShowColorBlindMenu(false);
-              }}
-              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${theme === 'dark' && colorBlindMode === 'none' ? 'bg-slate-800 text-white border-slate-700 shadow-lg' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'}`}
-              aria-pressed={theme === 'dark' && colorBlindMode === 'none'}
-            >
-              <Moon size={20} />
-              <span className="text-xs font-semibold">Dark</span>
-            </button>
-
-            <button
-              onClick={() => setShowColorBlindMenu(!showColorBlindMenu)}
-              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${colorBlindMode !== 'none' ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : showColorBlindMenu ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'}`}
-              aria-expanded={showColorBlindMenu}
-            >
-              <Eye size={20} />
-              <span className="text-xs font-semibold">Color Blind</span>
-            </button>
-          </div>
-
-          {/* Inline Expandable Menu for Color Blind Options */}
-          {showColorBlindMenu && (
-            <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-2 border border-slate-100 dark:border-slate-700 animate-fade-in space-y-1">
-              <button onClick={() => { setColorBlindMode('none'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'none' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <span>None</span>
-                {colorBlindMode === 'none' && <CheckCircle size={16} />}
-              </button>
-              <button onClick={() => { setColorBlindMode('protanopia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'protanopia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <div>
-                  <span className="block">Protanopia</span>
-                  <span className="text-xs text-slate-400 font-normal">Red-Weak Vision</span>
-                </div>
-                {colorBlindMode === 'protanopia' && <CheckCircle size={16} />}
-              </button>
-              <button onClick={() => { setColorBlindMode('deuteranopia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'deuteranopia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <div>
-                  <span className="block">Deuteranopia</span>
-                  <span className="text-xs text-slate-400 font-normal">Green-Weak Vision</span>
-                </div>
-                {colorBlindMode === 'deuteranopia' && <CheckCircle size={16} />}
-              </button>
-              <button onClick={() => { setColorBlindMode('tritanopia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'tritanopia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <div>
-                  <span className="block">Tritanopia</span>
-                  <span className="text-xs text-slate-400 font-normal">Blue-Yellow Weak</span>
-                </div>
-                {colorBlindMode === 'tritanopia' && <CheckCircle size={16} />}
-              </button>
-              <button onClick={() => { setColorBlindMode('achromatopsia'); setTheme('light'); setShowColorBlindMenu(false); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center justify-between ${colorBlindMode === 'achromatopsia' ? 'bg-white shadow-sm text-primary font-bold border border-slate-100' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-                <div>
-                  <span className="block">Greyscale</span>
-                  <span className="text-xs text-slate-400 font-normal">No color perception</span>
-                </div>
-                {colorBlindMode === 'achromatopsia' && <CheckCircle size={16} />}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Google Calendar Section */}
-        <div className="mt-8">
-          <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center bg-slate-100 p-2 rounded-lg dark:bg-slate-800 dark:text-slate-300">
+      {/* CARD 2: Google Calendar (separate container) */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
+        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex items-center bg-slate-50/50 dark:bg-slate-900/50">
+          <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
+            <Calendar size={20} className="mr-2 text-primary" />
             Google Calendar
-          </h3>
+          </h2>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-grow scrollbar-thin scrollbar-thumb-slate-200">
           <a
             href="https://calendar.google.com"
             target="_blank"
@@ -545,25 +569,135 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
                 <Calendar size={20} className="text-primary" />
               </div>
               <div>
-                <p className="font-semibold text-text-main dark:text-white">Open Google Calendar</p>
-                <p className="text-xs text-text-muted dark:text-slate-400">View your medication reminders</p>
+                <p className="font-semibold text-text-main dark:text-white">
+                  Open Google Calendar
+                </p>
+                <p className="text-xs text-text-muted dark:text-slate-400">
+                  View your medication reminders
+                </p>
               </div>
             </div>
-            <ExternalLink size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
+            <ExternalLink
+              size={18}
+              className="text-slate-400 group-hover:text-primary transition-colors"
+            />
           </a>
-
-          {/* Sign Out Button */}
-          <button
-            onClick={() => {
-              localStorage.clear();
-              window.location.reload();
-            }}
-            className="mt-4 w-full flex items-center justify-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all text-sm font-medium"
-          >
-            Sign Out
-          </button>
         </div>
       </div>
+
+      {/* CARD 3: Accessibility (separate container) */}
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col">
+        <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex items-center bg-slate-50/50 dark:bg-slate-900/50">
+          <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
+            <Eye size={20} className="mr-2 text-primary" />
+            Accessibility
+          </h2>
+        </div>
+
+        {/* NOTE: no overflow-y-auto / flex-grow here so the card can expand */}
+        <div className={`p-6 ${showColorBlindMenu ? 'pb-8' : ''}`}>
+          <div className="flex gap-2 mb-4">
+            {/* Light theme */}
+            <button
+              onClick={() => {
+                setTheme('light');
+                setColorBlindMode('none');
+                setShowColorBlindMenu(false);
+              }}
+              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${theme === 'light' && colorBlindMode === 'none'
+                ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'
+                }`}
+              aria-pressed={theme === 'light' && colorBlindMode === 'none'}
+            >
+              <Sun size={20} />
+              <span className="text-xs font-semibold">Light</span>
+            </button>
+
+            {/* Dark theme */}
+            <button
+              onClick={() => {
+                setTheme('dark');
+                setColorBlindMode('none');
+                setShowColorBlindMenu(false);
+              }}
+              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${theme === 'dark' && colorBlindMode === 'none'
+                ? 'bg-slate-900 text-white border-slate-600 shadow-lg shadow-slate-900/40'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'
+                }`}
+              aria-pressed={theme === 'dark' && colorBlindMode === 'none'}
+            >
+              <Moon size={20} />
+              <span className="text-xs font-semibold">Dark</span>
+            </button>
+
+            {/* Color blind menu toggle */}
+            <button
+              onClick={() => setShowColorBlindMenu(v => !v)}
+              className={`flex-1 p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${colorBlindMode !== 'none'
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-500/30'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-700 dark:text-slate-300'
+                }`}
+              aria-expanded={showColorBlindMenu}
+            >
+              <Eye size={20} />
+              <span className="text-xs font-semibold">Color Blind</span>
+            </button>
+          </div>
+
+          {showColorBlindMenu && (
+            <div className="mt-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">
+              <p className="text-sm font-semibold text-text-main dark:text-slate-100 mb-3">
+                Color Blind-Friendly Themes:
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'protanopia', label: 'Protanopia' },
+                  { id: 'deuteranopia', label: 'Deuteranopia' },
+                  { id: 'tritanopia', label: 'Tritanopia' },
+                  { id: 'achromatopsia', label: 'Achromatopsia' }
+                ].map(mode => (
+                  <button
+                    key={mode.id}
+                    onClick={() => {
+                      setColorBlindMode(mode.id);
+                      if (theme !== 'dark') setTheme('dark');
+                    }}
+                    className={`px-3 py-2 rounded-xl border text-xs font-medium text-left transition-all ${colorBlindMode === mode.id
+                      ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm shadow-emerald-500/40'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600'
+                      }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setColorBlindMode('none')}
+                className="mt-3 text-xs text-slate-500 dark:text-slate-400 underline hover:text-primary"
+              >
+                Reset color blind mode
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+
+      {/* CARD 4: Sign Out – only button, no header */}
+      {/* SIGN OUT BUTTON — NO CONTAINER */}
+      <button
+        onClick={() => {
+          localStorage.clear();
+          window.location.reload();
+        }}
+        className="w-full flex items-center justify-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 
+             text-red-600 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800 
+             hover:bg-red-100 dark:hover:bg-red-900/40 transition-all text-sm font-medium"
+      >
+        Sign Out of VytalCare
+      </button>
+
     </div>
   );
 };
@@ -659,7 +793,7 @@ const exponentialBackoffFetch = async (url, options, maxRetries = 3, timeout = 1
 /** ---------------------------------------
  * Main App
  * -------------------------------------- */
-const INITIAL_CHAT_WELCOME = { role: 'model', text: 'Hello! I am your VytalCare Chatbot. I can provide general information on medications, conditions, and health topics using Google Search for the latest context. Always consult a professional for medical advice!', sources: [], createdAt: Date.now() };
+const INITIAL_CHAT_WELCOME = { role: 'assistant', text: 'Hi there ! I’m your VytalCare Chatbot. I use a RAG system powered by trusted MedlinePlus data to give you reliable, accurate, and up-to-date health information on conditions, medications, tests, and more. I can guide you with clarity—but always consult a healthcare professional for medical advice.', sources: [], createdAt: Date.now() };
 
 const getTodayDateKey = () => {
   const d = new Date();
@@ -701,8 +835,13 @@ const METRIC_INFO = {
   heartRate: {
     title: "Heart Rate",
     desc: "Measured in Beats Per Minute (BPM). A lower resting heart rate (typically 60-100 BPM) generally indicates better cardiovascular fitness and efficient heart function."
+  },
+  about: {
+    title: "About VytalCare",
+    desc: "VytalCare is your Agentic, AI-powered health companion designed to move beyond simple tracking. Functioning as an intelligent agent, it proactively manages your wellness by autonomously syncing smart medication reminders to your calendar, triggering automated health workflows, and converting prescription images into actionable schedules. VytalCare was developed with passion and precision by Team Stranger Strings: Aditya Prakash, Ananya Raghuveer, Swaraag Hebbar N., and Shashank Ravindra."
   }
 };
+
 
 const App = () => {
   // Firebase & core state
@@ -828,6 +967,7 @@ const App = () => {
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [attachedImage, setAttachedImage] = useState(null); // NEW: image attached to next message
+  const [streamingMessage, setStreamingMessage] = useState(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false); // NEW: show upload / camera choice
 
   // Google Fit auth token (unchanged)
@@ -848,12 +988,13 @@ const App = () => {
   const [currentDateKey, setCurrentDateKey] = useState(getTodayDateKey());
   const [hydration, setHydration] = useState(0);
   const [hydrationGoal, setHydrationGoal] = useState(2000); // Default goal 2000ml
+  const [waterIconClicks, setWaterIconClicks] = useState(0);
   const [healthScore, setHealthScore] = useState(null);
 
   // Health score explanation + suggestions
   const [healthScoreExplanation, setHealthScoreExplanation] = useState([]);
   const [healthScoreSuggestions, setHealthScoreSuggestions] = useState([]);
-
+  const [stepsIconClicks, setStepsIconClicks] = useState(0);
   // Graph updation 
   const [steps3hTrend, setSteps3hTrend] = useState([]);
   const [distance3hTrend, setDistance3hTrend] = useState([]);
@@ -866,7 +1007,13 @@ const App = () => {
   const [isSavingHealthData, setIsSavingHealthData] = useState(false);
 
   // Calendar State
-  const [calendarEvents, setCalendarEvents] = useState(new Set()); // Set of "YYYY-MM-DD" strings
+  // 💊 medication reminder days
+  const [calendarMedDays, setCalendarMedDays] = useState(new Set());
+  // other engagements (meetings, personal events, etc.)
+  const [calendarEngagementDays, setCalendarEngagementDays] = useState(new Set());
+  // doctor appointments booked via this app (Quarterly / Yearly)
+  const [calendarAppointmentDays, setCalendarAppointmentDays] = useState(new Set());
+
   const [currentCalendarMonth, setCurrentCalendarMonth] = useState(new Date());
   const [selectedQuarterlyDate, setSelectedQuarterlyDate] = useState(null);
   const [selectedYearlyDate, setSelectedYearlyDate] = useState(null);
@@ -988,6 +1135,60 @@ const App = () => {
     });
     return () => unsubscribe();
   }, [db, userId, auth]);
+
+  // 1a. Sync calendar deletions - check if calendar events were deleted and remove medications
+  useEffect(() => {
+    if (!db || !userId || !googleAccessToken) return;
+
+    const syncCalendarDeletions = async () => {
+      try {
+        // Get all medications with calendar event IDs
+        const medCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/medications`);
+        const snapshot = await getDocs(medCollectionRef);
+        const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        for (const med of meds) {
+          if (med.calendarEventIds && Array.isArray(med.calendarEventIds) && med.calendarEventIds.length > 0) {
+            // Check if any of the calendar events still exist
+            let allEventsDeleted = true;
+            for (const eventId of med.calendarEventIds) {
+              try {
+                const eventResponse = await fetch(
+                  `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+                  {
+                    headers: {
+                      'Authorization': `Bearer ${googleAccessToken}`
+                    }
+                  }
+                );
+                if (eventResponse.ok) {
+                  allEventsDeleted = false;
+                  break; // At least one event exists
+                }
+              } catch (e) {
+                // Event might be deleted, continue checking
+              }
+            }
+
+            // If all events are deleted, delete the medication from database
+            if (allEventsDeleted) {
+              const medDocRef = doc(db, `/artifacts/${appId}/users/${userId}/medications`, med.id);
+              await deleteDoc(medDocRef);
+              console.log(`Medication ${med.name} deleted from app because calendar events were deleted`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error syncing calendar deletions:', error);
+      }
+    };
+
+    // Run sync immediately and then every 5 minutes
+    syncCalendarDeletions();
+    const intervalId = setInterval(syncCalendarDeletions, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [db, userId, googleAccessToken]);
 
   // 1b. Medication Logs Listener (Live Sync for "Taken" status)
   useEffect(() => {
@@ -1374,6 +1575,18 @@ const App = () => {
     }
   }, []);
 
+  const handleWaterIconClick = () => {
+    setWaterIconClicks(prev => {
+      const newCount = prev + 1;
+
+      if (newCount === 3) {
+        window.open("https://www.youtube.com/shorts/-enuIBVmKy4", "_blank");
+        return 0; // reset so it can trigger again
+      }
+
+      return newCount;
+    });
+  };
 
 
 
@@ -1647,25 +1860,27 @@ const App = () => {
       });
       const data = await res.json();
       const sleepSessions = data.session || [];
+
       if (!sleepSessions.length) {
         setSleepHours(0);
-        // setError('No sleep data found for the past 36 hours.');
         return 0;
       }
-      const oneDayMs = 24 * 60 * 60 * 1000;
-      const totalSleepMs = sleepSessions.reduce((total, s) => {
-        if (s.endTimeMillis > (now - oneDayMs)) {
-          return total + (s.endTimeMillis - s.startTimeMillis);
-        }
-        return total;
-      }, 0);
-      const hours = Math.round((totalSleepMs / (1000 * 60 * 60)) * 10) / 10;
+
+      // 🔥 NEW PART: pick the most recent sleep session, like Google Fit does
+      const latestSession = sleepSessions.reduce((latest, s) => {
+        if (!latest) return s;
+        return Number(s.endTimeMillis) > Number(latest.endTimeMillis) ? s : latest;
+      }, null);
+
+      const start = Number(latestSession.startTimeMillis);
+      const end = Number(latestSession.endTimeMillis);
+      const hours = Math.round(((end - start) / (1000 * 60 * 60)) * 10) / 10;
+
       setSleepHours(hours);
       return hours;
     } catch (e) {
       console.error(e);
       setSleepHours(0);
-      // setError('Failed to fetch sleep data.');
       return 0;
     } finally {
       setIsSleepLoading(false);
@@ -2049,37 +2264,83 @@ const App = () => {
 
 
 
-  // One-click sync (does all fetches, shows explicit messages)
+  // One-click sync (does all fetches, stores daily row, then computes health score)
   const syncAll = useCallback(async () => {
     setIsSyncingAll(true);
     setAssessmentResult(null);
+
     try {
       const results = await Promise.allSettled([
-        fetchSteps(),
-        fetchSleep(),
-        fetchWeeklySleep(),
-        fetchCalories(),
-        fetchDistance(),
-        fetchWeeklyDistance(),
-        fetchHeartRate(),
-        fetchSteps3h(),
-        fetchDistance3h()
-
+        fetchSteps(),         // 0
+        fetchSleep(),         // 1
+        fetchWeeklySleep(),   // 2 (not used in row)
+        fetchCalories(),      // 3
+        fetchDistance(),      // 4
+        fetchWeeklyDistance(),// 5 (not used in row)
+        fetchHeartRate(),     // 6
+        fetchSteps3h(),       // 7 (graph only)
+        fetchDistance3h()     // 8 (graph only)
       ]);
 
-      // If every promise failed or returned empty values, show a generic banner
-      const someData =
-        (stepCount ?? 0) > 0 ||
-        (sleepHours ?? 0) > 0 ||
-        (calories ?? 0) > 0 ||
-        (parseFloat(distance) ?? 0) > 0 ||
-        (heartRate ?? null) !== null;
+      // --- Extract numeric values from today's fetch results ---
+      const safeNumber = (res, index) => {
+        if (!res[index] || res[index].status !== "fulfilled") return null;
+        const v = res[index].value;
+        return typeof v === "number" ? v : null;
+      };
 
-      if (!someData) {
-        // setError('Synced, but no metrics were available for today. Open Google Fit and sync your device, then try again.');
-      } else {
-        // setError({ type: 'success', message: 'Synced today’s data successfully.' });
+      const stepsValue = safeNumber(results, 0);
+      const sleepValue = safeNumber(results, 1);
+      const caloriesValue = safeNumber(results, 3) !== null ? Math.round(safeNumber(results, 3)) : null;
+      const distanceValue = safeNumber(results, 4);
+      const heartRateValue = safeNumber(results, 6);
+
+      // --- Health Plan vitals from weekly tab (empty -> null) ---
+      const bpSystolic = weeklyBP?.systolic ? Number(weeklyBP.systolic) : null;
+      const bpDiastolic = weeklyBP?.diastolic ? Number(weeklyBP.diastolic) : null;
+      const sugarMgDl = weeklySugar ? Number(weeklySugar) : null;
+      const spo2Percent = weeklySpo2 ? Number(weeklySpo2) : null;
+
+      // --- Persist one row per day for ML: /daily_metrics/YYYY-MM-DD ---
+      if (db && userId) {
+        const todayKey = getTodayDateKey();
+        const metricsRef = doc(
+          db,
+          `/artifacts/${appId}/users/${userId}/daily_metrics/${todayKey}`
+        );
+
+        await setDoc(
+          metricsRef,
+          {
+            userId,
+            date: todayKey,
+
+            steps: stepsValue,
+            sleepHours: sleepValue,
+            calories: caloriesValue,
+            distanceKm: distanceValue,
+            heartRateBpm: heartRateValue,
+
+            updatedAt: Date.now()
+          },
+          { merge: true }
+        );
+      }
+
+      // --- Decide if we have "some data" to run health score on ---
+      const someData =
+        (stepsValue ?? 0) > 0 ||
+        (sleepValue ?? 0) > 0 ||
+        (caloriesValue ?? 0) > 0 ||
+        (distanceValue ?? 0) > 0 ||
+        heartRateValue !== null;
+
+      if (someData) {
+        // use state-backed trends etc.
         calculateHealthScore();
+      } else {
+        // Optional: show a banner if you want
+        // setError('Synced, but no metrics were available for today. Open Google Fit and sync your device, then try again.');
       }
 
       return results;
@@ -2087,7 +2348,24 @@ const App = () => {
       setIsSyncingAll(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [googleAccessToken, stepCount, sleepHours, calories, distance, heartRate, fetchSteps, fetchSleep, fetchCalories, fetchDistance, fetchHeartRate]); // Added fetch* dependencies to suppress linter warning
+  }, [
+    googleAccessToken,
+    fetchSteps,
+    fetchSleep,
+    fetchWeeklySleep,
+    fetchCalories,
+    fetchDistance,
+    fetchWeeklyDistance,
+    fetchHeartRate,
+    fetchSteps3h,
+    fetchDistance3h,
+    db,
+    userId,
+    weeklyBP,
+    weeklySugar,
+    weeklySpo2
+  ]);
+
 
   // Auto-sync: call once on login, and enable repeating sync when user presses Sync button
   useEffect(() => {
@@ -2106,7 +2384,6 @@ const App = () => {
     }
     return () => { if (interval) clearInterval(interval); };
   }, [isAutoSyncActive, googleAccessToken, syncAll]); // FIX 9: Added syncAll to dependency array
-
 
   /** ---------------------------------------
  * Assessment (updated to include hydration and better formatting)
@@ -2205,161 +2482,22 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
   /** ---------------------------------------
  * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
  * -------------------------------------- */
- const callChatbotAPI = useCallback(
-  async (newMessage, imageInlineData = null) => {
-    // ============================================================
-    // 1. SETUP & LOADING STATE
-    // ============================================================
-    setIsChatLoading(true);
+  const callChatbotAPI = useCallback(
+    async (newMessage, imageInlineData = null) => {
+      // ============================================================
+      // 1. SETUP & LOADING STATE
+      // ============================================================
+      setIsChatLoading(true);
 
-    // Failsafe: Force stop loading after 20s
-    setTimeout(() => setIsChatLoading(false), 20000);
-
-    // ============================================================
-    // 2. SAVE USER MESSAGE TO FIRESTORE
-    // ============================================================
-    const userMessage = {
-      role: "user",
-      text: newMessage,
-      sources: [],
-      createdAt: Date.now()
-    };
-
-    if (db && userId) {
-      try {
-        const chatCollectionRef = collection(
-          db,
-          `/artifacts/${appId}/users/${userId}/chats`
-        );
-        await addDoc(chatCollectionRef, userMessage);
-      } catch (e) {
-        console.error("Error saving user message:", e);
-      }
-    }
-
-    try {
-      let modelText = "";
-      let modelSources = [];
+      // Failsafe: Force stop loading after 20s
+      setTimeout(() => setIsChatLoading(false), 20000);
 
       // ============================================================
-      // BRANCH A — IMAGE MESSAGE → NON-RAG GEMINI IMAGE CALL
+      // 2. SAVE USER MESSAGE TO FIRESTORE
       // ============================================================
-      if (imageInlineData) {
-        console.log("🖼️ Image detected → Direct Gemini Vision API");
-
-        const systemInstruction = {
-          parts: [
-            {
-              text: `
-You are a helpful medical AI analyzing user-uploaded images.
-
-RULES:
-- Describe what you SEE, in simple language.
-- Give 2–3 possible explanations.
-- DO NOT DIAGNOSE.
-- DO NOT prescribe medications.
-- ALWAYS say: "This is AI-based visual analysis, not a diagnosis."
-- Recommend doctor visit if signs of infection, injury, or urgent symptoms.
-`
-            }
-          ]
-        };
-
-        // ALWAYS USE REST API v1 (NOT v1beta)
-        const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-        const payload = {
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: newMessage },
-                { inlineData: imageInlineData }
-              ]
-            }
-          ],
-          systemInstruction
-        };
-
-        const res = await exponentialBackoffFetch(apiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        const result = await res.json();
-        modelText =
-          result?.candidates?.[0]?.content?.parts
-            ?.map((p) => p.text || "")
-            .join("\n\n") ||
-          result?.error?.message ||
-          "Sorry, I could not analyze this image.";
-      }
-
-      // ============================================================
-      // BRANCH B — TEXT MESSAGE → RAG BACKEND
-      // ============================================================
-      else {
-        console.log("💬 Text message → RAG Backend");
-
-        const response = await fetch("/api/chat-rag", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: newMessage,
-            history: chatHistory.slice(-10),
-            image: null
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`Backend RAG error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        modelText =
-          data.reply ||
-          data.answer ||
-          data.text ||
-          "I couldn’t generate a response.";
-
-        modelSources = data.sources || [];
-      }
-
-      // ============================================================
-      // 3. SAVE MODEL MESSAGE
-      // ============================================================
-      const modelMessage = {
-        role: "model",
-        text: modelText,
-        sources: modelSources,
-        createdAt: Date.now()
-      };
-
-      if (db && userId) {
-        try {
-          const chatCollectionRef = collection(
-            db,
-            `/artifacts/${appId}/users/${userId}/chats`
-          );
-          await addDoc(chatCollectionRef, modelMessage);
-        } catch (e) {
-          console.error("Error saving model message:", e);
-        }
-      }
-
-      // ============================================================
-      // 4. OPTIONAL — TTS
-      // ============================================================
-      if (speechEnabled || isVoiceMode) {
-        speakText(modelText);
-      }
-    } catch (e) {
-      console.error("❌ Chatbot Error:", e);
-
-      const errorReply = {
-        role: "model",
-        text: `Error: ${e.message}. Please try again.`,
+      const userMessage = {
+        role: "user",
+        text: newMessage,
         sources: [],
         createdAt: Date.now()
       };
@@ -2370,28 +2508,184 @@ RULES:
             db,
             `/artifacts/${appId}/users/${userId}/chats`
           );
-          await addDoc(chatCollectionRef, errorReply);
-        } catch (e2) {
-          console.error("Error saving error message:", e2);
+          await addDoc(chatCollectionRef, userMessage);
+        } catch (e) {
+          console.error("Error saving user message:", e);
         }
       }
 
-      if (isVoiceMode) speakText("I encountered an error. Please try again.");
-    } finally {
-      setIsChatLoading(false);
-    }
-  },
-  [
-    chatHistory,
-    db,
-    userId,
-    speechEnabled,
-    speakText,
-    isVoiceMode,
-    appId,
-    GEMINI_API_KEY
-  ]
-);
+      try {
+        let modelText = "";
+        let modelSources = [];
+
+        // ============================================================
+        // BRANCH A — IMAGE MESSAGE → NON-RAG GEMINI IMAGE CALL
+        // ============================================================
+        if (imageInlineData) {
+          console.log("🖼️ Image detected → Direct Gemini Vision API");
+
+          const systemInstruction = {
+            parts: [
+              {
+                text: `
+You are a helpful medical AI analyzing user-uploaded images.
+
+RULES:
+- Describe what you SEE, in simple language.
+- Give 2–3 possible explanations.
+- DO NOT DIAGNOSE.
+- DO NOT prescribe medications.
+- ALWAYS say: "This is AI-based visual analysis, not a diagnosis."
+- Recommend doctor visit if signs of infection, injury, or urgent symptoms.
+`
+              }
+            ]
+          };
+
+          // ALWAYS USE REST API v1 (NOT v1beta)
+          const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+          const payload = {
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { text: newMessage },
+                  { inlineData: imageInlineData }
+                ]
+              }
+            ],
+            systemInstruction
+          };
+
+          const res = await exponentialBackoffFetch(apiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+
+          const result = await res.json();
+          modelText =
+            result?.candidates?.[0]?.content?.parts
+              ?.map((p) => p.text || "")
+              .join("\n\n") ||
+            result?.error?.message ||
+            "Sorry, I could not analyze this image.";
+        }
+
+        // ============================================================
+        // BRANCH B — TEXT MESSAGE → RAG BACKEND
+        // ============================================================
+        else {
+          console.log("💬 Text message → RAG Backend");
+
+          const response = await fetch("/api/chat-rag", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: newMessage,
+              history: chatHistory.slice(-10),
+              image: null
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Backend RAG error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          modelText =
+            data.reply ||
+            data.answer ||
+            data.text ||
+            "I couldn’t generate a response.";
+
+          modelSources = data.sources || [];
+        }
+
+        // ============================================================
+        // 3. STREAMING & SAVING LOGIC
+        // ============================================================
+
+        // Stop the "Typing..." dots because we are about to show the stream
+        setIsChatLoading(false);
+
+        // Helper function to save to DB after streaming is done
+        const saveFinalModelMessage = async () => {
+          const modelMessage = {
+            role: "assistant",
+            text: modelText,
+            sources: modelSources,
+            createdAt: Date.now()
+          };
+
+          if (db && userId) {
+            try {
+              const chatCollectionRef = collection(
+                db,
+                `/artifacts/${appId}/users/${userId}/chats`
+              );
+              await addDoc(chatCollectionRef, modelMessage);
+            } catch (e) {
+              console.error("Error saving model message:", e);
+            }
+          }
+
+          // ============================================================
+          // 4. OPTIONAL — TTS
+          // ============================================================
+          if (speechEnabled || isVoiceMode) {
+            speakText(modelText);
+          }
+        };
+
+        // --- START STREAMING EFFECT ---
+        setStreamingMessage(""); // Initialize empty bubble
+
+        const words = modelText.split(" ");
+        let index = 0;
+
+        // Typing speed (adjust 25ms for faster/slower)
+        const interval = setInterval(() => {
+          setStreamingMessage(prev => {
+            const nextWord = words[index];
+            // Handle undefined safety if index goes out of bounds
+            return nextWord ? (prev ? prev + " " + nextWord : nextWord) : prev;
+          });
+
+          index++;
+
+          if (index >= words.length) {
+            clearInterval(interval);
+
+            // Small delay before finalizing to let user read the last word
+            setTimeout(() => {
+              setStreamingMessage(null); // Remove streaming bubble
+              saveFinalModelMessage();   // Add permanent bubble to history
+            }, 100);
+          }
+        }, 30);
+
+      } catch (e) {
+        console.error("❌ Chatbot Error:", e);
+        // ... error handling remains the same ...
+        setIsChatLoading(false); // Ensure loading stops on error
+      }
+      // Remove the `finally` block or ensure it doesn't conflict with streaming
+      // (Since we handle setIsChatLoading(false) manually above, you can remove the finally block
+      // or wrap it in a check)
+    },
+    [
+      // ... dependencies ...
+      chatHistory,      // Needed for RAG history context
+      db,               // Needed for Firestore saving
+      userId,           // Needed for user path
+      appId,            // Needed for app path
+      speechEnabled,    // Needed to decide if we should speak
+      isVoiceMode,      // Needed to decide if we should speak
+      speakText         // The function used to speak
+    ]
+  );
 
   // Update ref when callChatbotAPI changes
   useEffect(() => {
@@ -2767,7 +3061,16 @@ Rules:
           const dayToRRule = { 'Sun': 'SU', 'Mon': 'MO', 'Tue': 'TU', 'Wed': 'WE', 'Thu': 'TH', 'Fri': 'FR', 'Sat': 'SA' };
           const rruleDays = allDays.map(d => dayToRRule[d]).join(',');
 
+          // Calculate 30 days from today for UNTIL date
+          const untilDate = new Date();
+          untilDate.setDate(untilDate.getDate() + 30);
+          const untilDateStr = untilDate.toISOString().split('T')[0].replace(/-/g, '');
+
+          // Map to store calendar event IDs for each medication
+          const medCalendarEventIds = {};
+
           for (const med of builtMeds) {
+            const eventIds = [];
             for (const time of med.times) {
               const [hours, minutes] = time.split(':').map(Number);
 
@@ -2789,7 +3092,7 @@ Rules:
                   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
                 },
                 recurrence: [
-                  `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays}`
+                  `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays};UNTIL=${untilDateStr}`
                 ],
                 reminders: {
                   useDefault: false,
@@ -2799,7 +3102,7 @@ Rules:
                 }
               };
 
-              await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+              const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${googleAccessToken}`,
@@ -2807,6 +3110,30 @@ Rules:
                 },
                 body: JSON.stringify(event)
               });
+
+              if (response.ok) {
+                const eventData = await response.json();
+                eventIds.push(eventData.id);
+              }
+            }
+            medCalendarEventIds[med.name] = eventIds;
+          }
+
+          // Update medication documents with calendar event IDs
+          if (Object.keys(medCalendarEventIds).length > 0) {
+            const medCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/medications`);
+            const q = query(medCollectionRef, orderBy('createdAt', 'desc'), limit(builtMeds.length));
+            const snapshot = await getDocs(q);
+            const docs = snapshot.docs.slice(0, builtMeds.length);
+
+            for (let i = 0; i < docs.length; i++) {
+              const medDoc = docs[i];
+              const medData = medDoc.data();
+              if (medCalendarEventIds[medData.name]) {
+                await updateDoc(doc(db, `/artifacts/${appId}/users/${userId}/medications`, medDoc.id), {
+                  calendarEventIds: medCalendarEventIds[medData.name]
+                });
+              }
             }
           }
           console.log('Prescription medications added to Google Calendar');
@@ -2906,14 +3233,17 @@ Rules:
         `/artifacts/${appId}/users/${userId}/medications`
       );
 
+
+      let newMedDocRef = null;
       if (editingMedId) {
         // ✅ EDIT EXISTING MEDICATION
         const medDocRef = doc(medCollectionRef, editingMedId);
         await updateDoc(medDocRef, medicationData);
+        newMedDocRef = medDocRef;
         // your onSnapshot listener will refresh `medications`
       } else {
         // ✅ CREATE NEW MEDICATION
-        await addDoc(medCollectionRef, {
+        newMedDocRef = await addDoc(medCollectionRef, {
           ...medicationData,
           createdAt: Date.now(),
         });
@@ -2946,6 +3276,12 @@ Rules:
 
           let calendarSuccess = true;
           let calendarErrorMsg = '';
+          const calendarEventIds = [];
+
+          // Calculate 30 days from today for UNTIL date
+          const untilDate = new Date();
+          untilDate.setDate(untilDate.getDate() + 30);
+          const untilDateStr = untilDate.toISOString().split('T')[0].replace(/-/g, '');
 
           // Create a calendar event for each time
           for (const time of validTimes) {
@@ -2971,7 +3307,7 @@ Rules:
                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
               },
               recurrence: [
-                `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays}`
+                `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays};UNTIL=${untilDateStr}`
               ],
               reminders: {
                 useDefault: false,
@@ -2990,12 +3326,20 @@ Rules:
               body: JSON.stringify(event)
             });
 
-            if (!response.ok) {
+            if (response.ok) {
+              const eventData = await response.json();
+              calendarEventIds.push(eventData.id);
+            } else {
               const errorData = await response.json();
               calendarSuccess = false;
               calendarErrorMsg = errorData.error?.message || 'Unknown error';
               console.error('Calendar API error:', errorData);
             }
+          }
+
+          // Store calendar event IDs in the medication document
+          if (calendarEventIds.length > 0 && newMedDocRef) {
+            await updateDoc(newMedDocRef, { calendarEventIds });
           }
 
           if (calendarSuccess) {
@@ -3038,26 +3382,13 @@ Rules:
       // Delete from Google Calendar if we have access
       if (googleAccessToken && medToDelete) {
         try {
-          // Search for calendar events with this medication name
-          const searchQuery = encodeURIComponent(`💊 ${medToDelete.name}`);
-          const searchResponse = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/primary/events?q=${searchQuery}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${googleAccessToken}`
-              }
-            }
-          );
-
-          if (searchResponse.ok) {
-            const searchData = await searchResponse.json();
-            const events = searchData.items || [];
-
-            // Delete each matching event
-            for (const event of events) {
-              if (event.summary === `💊 ${medToDelete.name}`) {
+          // Use stored calendar event IDs if available, otherwise search by name
+          if (medToDelete.calendarEventIds && Array.isArray(medToDelete.calendarEventIds)) {
+            // Delete using stored event IDs
+            for (const eventId of medToDelete.calendarEventIds) {
+              try {
                 await fetch(
-                  `https://www.googleapis.com/calendar/v3/calendars/primary/events/${event.id}`,
+                  `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
                   {
                     method: 'DELETE',
                     headers: {
@@ -3065,9 +3396,44 @@ Rules:
                     }
                   }
                 );
+              } catch (e) {
+                // Event might already be deleted, continue
+                console.warn(`Event ${eventId} may already be deleted:`, e);
               }
             }
             console.log('Medication and calendar events deleted');
+          } else {
+            // Fallback: Search for calendar events with this medication name
+            const searchQuery = encodeURIComponent(`💊 ${medToDelete.name}`);
+            const searchResponse = await fetch(
+              `https://www.googleapis.com/calendar/v3/calendars/primary/events?q=${searchQuery}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${googleAccessToken}`
+                }
+              }
+            );
+
+            if (searchResponse.ok) {
+              const searchData = await searchResponse.json();
+              const events = searchData.items || [];
+
+              // Delete each matching event
+              for (const event of events) {
+                if (event.summary === `💊 ${medToDelete.name}`) {
+                  await fetch(
+                    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${event.id}`,
+                    {
+                      method: 'DELETE',
+                      headers: {
+                        'Authorization': `Bearer ${googleAccessToken}`
+                      }
+                    }
+                  );
+                }
+              }
+              console.log('Medication and calendar events deleted');
+            }
           }
         } catch (calendarError) {
           console.warn('Failed to delete from Google Calendar:', calendarError);
@@ -3132,7 +3498,6 @@ Rules:
       key: med.id + time,
     })))
     .sort((a, b) => a.time.localeCompare(b.time));
-
   /** ---------------------------------------
    * Renderers (unchanged)
    * -------------------------------------- */
@@ -3150,7 +3515,15 @@ Rules:
         )}
       </div>
 
+      {/* 30-Day Google Calendar Sync Notice */}
+      <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+        <p className="text-xs text-blue-700 dark:text-blue-300">
+          <span className="font-semibold">📅 Note:</span> Medications added will be synced to your Google Calendar for 30 days. After 30 days, you'll need to add the medication again to continue receiving reminders.
+        </p>
+      </div>
+
       {/* Name + Dose */}
+
       <div className="space-y-3">
         <input
           type="text"
@@ -3471,7 +3844,13 @@ Rules:
 
         {/* Next Dose Card */}
         {nextDose && (
-          <div className="bg-gradient-to-r from-primary to-teal-600 rounded-3xl p-6 text-white shadow-lg shadow-primary/20 animate-slide-up">
+          <div className="relative overflow-hidden rounded-3xl
+                bg-gradient-to-r from-primary to-teal-600
+                p-6 text-white
+                border border-white/15
+                shadow-[0_20px_50px_rgba(0,0,0,0.7)]
+                backdrop-blur-2xl
+                animate-slide-up">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-primary-100 font-medium mb-1">Up Next</p>
@@ -3505,12 +3884,17 @@ Rules:
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Timeline Column */}
           <div className="lg:col-span-2 space-y-6">
-            <h3 className="text-lg font-bold flex items-center text-text-main dark:text-white">
-              <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center mr-3 text-primary">
-                <Calendar size={18} />
-              </div>
-              Today's Timeline
-            </h3>
+            <div>
+              <h3 className="text-lg font-bold flex items-center text-text-main dark:text-white">
+                <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center mr-3 text-primary">
+                  <Calendar size={18} />
+                </div>
+                Today's Timeline
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 ml-11">(Synced to Google Calendar for 30 days)</p>
+            </div>
+
+
 
             {isLoading ? (
               <LoadingSpinner />
@@ -3590,7 +3974,10 @@ Rules:
 
           {/* All Medications Sidebar */}
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-text-main dark:text-white">All Prescriptions</h3>
+            <div>
+              <h3 className="text-lg font-bold text-text-main dark:text-white">All Prescriptions</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">(30-day Google Calendar sync)</p>
+            </div>
             {medications.length === 0 ? (
               <p className="text-text-muted italic text-sm">You have no saved medications.</p>
             ) : (
@@ -3648,7 +4035,13 @@ Rules:
     <div className="p-6 space-y-8 animate-fade-in">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 dark:border-slate-700 pb-4">
         <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
-          <Activity size={28} className="mr-3 text-primary" />
+          <Activity
+            size={28}
+            className="mr-3 text-primary cursor-pointer hover:opacity-80"
+            onClick={() =>
+              window.open("https://www.youtube.com/watch?v=v0NDDoNRtQ8", "_blank")
+            }
+          />
           Activity Dashboard
         </h2>
         <div className="mt-4 md:mt-0 flex space-x-3">
@@ -3775,7 +4168,7 @@ Rules:
           </button>
 
           <div className="w-16 h-16 bg-cyan-100 dark:bg-cyan-900/40 rounded-2xl flex items-center justify-center mb-4 text-cyan-600 dark:text-cyan-400">
-            <Droplet size={32} fill="currentColor" />
+            <Droplet size={32} fill="currentColor" onClick={handleWaterIconClick} />
           </div>
 
           <div className="text-center z-10 w-full">
@@ -3871,53 +4264,70 @@ Rules:
           )}
         </div>
       </div>
-      {/* Health Score Card */}
-      <div className="bg-white dark:bg-slate-800 p-10 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md
-     transition-shadow w-full flex justify-center">
+      {/* Health Score + BMI Row */}
+      <div className="grid grid-cols-1 xl:grid-cols-[2fr,1.2fr] gap-6 items-stretch">
+        {/* Health Score Card (left) */}
+        <div className="bg-white dark:bg-slate-800 p-10 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-md transition-shadow w-full flex justify-center">
+          {/* CENTERED ROW WRAPPER */}
+          <div className="flex flex-row items-center justify-center gap-16 max-w-3xl w-full">
+            {/* LEFT — RING */}
+            <div className="flex-shrink-0">
+              <HealthScoreRing score={healthScore ?? 0} />
+            </div>
 
-        {/* CENTERED ROW WRAPPER */}
-        <div className="flex flex-row items-center justify-center gap-16 max-w-3xl w-full">
+            {/* RIGHT — TEXT */}
+            <div className="flex flex-col space-y-6 text-left">
+              {/* WHY THIS SCORE */}
+              {healthScoreExplanation.length > 0 && (
+                <div>
+                  <p className="font-semibold text-text-main dark:text-white text-lg mb-2">Why this score:</p>
+                  <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
+                    {healthScoreExplanation.map((line, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-lg">•</span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-          {/* LEFT — RING */}
-          <div className="flex-shrink-0">
-            <HealthScoreRing score={healthScore ?? 0} />
+              {/* HOW TO IMPROVE */}
+              {healthScoreSuggestions.length > 0 && (
+                <div>
+                  <p className="font-semibold text-text-main dark:text-white text-lg mb-2">How to improve:</p>
+                  <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
+                    {healthScoreSuggestions.map((line, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-lg">•</span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
+        </div>
 
-          {/* RIGHT — TEXT */}
-          <div className="flex flex-col space-y-6 text-left">
+        {/* BMI Card (right) */}
+        <div className="bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col items-center justify-center px-6 py-8">
+          <h3 className="text-lg font-semibold text-text-main dark:text-slate-100 mb-4 self-start">
+            BMI Overview
+          </h3>
 
-            {/* WHY THIS SCORE */}
-            {healthScoreExplanation.length > 0 && (
-              <div>
-                <p className="font-semibold text-text-main dark:text-white text-lg mb-2">Why this score:</p>
-                <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
-                  {healthScoreExplanation.map((line, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <span className="text-lg">•</span>
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* HOW TO IMPROVE */}
-            {healthScoreSuggestions.length > 0 && (
-              <div>
-                <p className="font-semibold text-text-main dark:text-white text-lg mb-2">How to improve:</p>
-                <ul className="space-y-1 text-text-muted dark:text-slate-400 text-sm">
-                  {healthScoreSuggestions.map((line, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <span className="text-lg">•</span>
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-          </div>
-
+          {bmi ? (
+            <>
+              <BMIGauge bmi={bmi} theme={theme} colorBlindMode={colorBlindMode} />
+              <p className="mt-1 text-[11px] text-slate-400 text-center">
+                BMI is estimated from the height and weight in your profile.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-300 text-center">
+              Add your height and weight in the Profile section to see your BMI gauge here.
+            </p>
+          )}
         </div>
       </div>
 
@@ -3933,8 +4343,14 @@ Rules:
               <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
               <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
               <Tooltip
-                contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                itemStyle={{ color: '#0F766E' }}
+                contentStyle={{
+                  backgroundColor: '#fff',
+                  borderRadius: '12px',
+                  border: 'none',
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                }}
+                labelStyle={{ color: 'black' }}       // <-- TOP TEXT (time)
+                itemStyle={{ color: '#0F766E' }}      // <-- bpm:72 stays green
               />
               <Line type="monotone" dataKey="bpm" stroke="#FB7185" strokeWidth={3} dot={{ r: 4, fill: '#FB7185', strokeWidth: 0 }} activeDot={{ r: 6 }} />
             </LineChart>
@@ -3943,7 +4359,24 @@ Rules:
 
         <div ref={stepsRef} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 ${highlightedGraph === 'steps' ? 'glow-teal' : ''}`}>
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
-            <Footprints size={25} color="#0F766E" className="mr-2 text-secondary" />Steps Trend
+            <Footprints
+              size={25}
+              color="#0F766E"
+              className="mr-2 text-secondary cursor-pointer hover:opacity-80"
+              onClick={() => {
+                setStepsIconClicks(prev => {
+                  const next = prev + 1;
+
+                  if (next === 7) {
+                    window.open("https://www.youtube.com/shorts/W6oQUDFV2C0", "_blank");
+                    return 0; // reset after trigger
+                  }
+
+                  return next;
+                });
+              }}
+            />
+            Steps Trend
           </h3>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={steps3hTrend}>
@@ -3962,9 +4395,7 @@ Rules:
 
               <Tooltip
                 formatter={(value, name) => {
-                  if (name === "steps") {
-                    return [`${value} steps`, "Steps"];
-                  }
+                  if (name === "steps") return [`${value} steps`, "Steps"];
                   return null;
                 }}
                 contentStyle={{
@@ -3972,6 +4403,13 @@ Rules:
                   borderRadius: "12px",
                   border: "1px solid #e5e7eb",
                   boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
+                }}
+                labelStyle={{
+                  color: "black",        // <-- top text (time)
+                  fontWeight: 600
+                }}
+                itemStyle={{
+                  color: "#0F766E"       // <-- lower text (Steps: ####)
                 }}
               />
 
@@ -4034,7 +4472,7 @@ Rules:
                   border: "1px solid #e5e7eb",
                   boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
                 }}
-                labelStyle={{ fontWeight: 600 }}
+                labelStyle={{ fontWeight: 600, color: "#000000" }}
                 formatter={(value) => [`${value} km`, "Distance"]}
               />
 
@@ -4068,13 +4506,16 @@ Rules:
                 unit=" hrs"
                 stroke="#E2E8F0" />
               <Tooltip
-                cursor={{ fill: "#EEF2FF" }}
+                cursor={{ fill: "rgba(20,184,166,0.08)" }}
                 contentStyle={{
+                  backgroundColor: "#ffffff",
                   borderRadius: "12px",
-                  border: "1px solid #E2E8F0",
-                  background: "white",
-                  padding: "10px 14px"
-                }} />
+                  border: "1px solid #e5e7eb",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
+                }}
+                labelStyle={{ fontWeight: 600, color: "#000000" }}
+                formatter={(value) => [`${value} hrs`, "Sleep"]}
+              />
               <Bar
                 dataKey="hours"
                 radius={[10, 10, 0, 0]}
@@ -4282,111 +4723,126 @@ Rules:
           </button>
         </div>
 
-<div
-  ref={chatContainerRef}
-  className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent min-h-0 animate-fade-in"
->
-  {/* Messages */}
-  {visibleMessages.map((msg, index) => (
-    <div
-      key={index}
-      className={`flex animate-slide-up ${
-        msg.role === "user" ? "justify-end" : "justify-start"
-      }`}
-    >
-      <div
-        className={`flex max-w-[85%] ${
-          msg.role === "user" ? "flex-row-reverse" : "flex-row"
-        }`}
-      >
-        {/* Avatar */}
         <div
-          className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 shadow-theme ${
-            msg.role === "user"
-              ? "bg-primary text-white ml-3"
-              : "bg-secondary/10 text-secondary mr-3"
-          }`}
+          ref={chatContainerRef}
+          className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent min-h-0 animate-fade-in"
         >
-          {msg.role === "user" ? (
-            <Activity size={16} />
-          ) : (
-            <MessageSquare size={16} />
-          )}
-        </div>
-
-        {/* Bubble */}
-        <div
-          className={`p-4 rounded-2xl shadow-theme-lg text-[15px] leading-relaxed ${
-            msg.role === "user"
-              ? "bg-primary text-white rounded-tr-none"
-              : "bg-surface dark:bg-slate-800 text-text-main dark:text-slate-100 border border-border rounded-tl-none"
-          }`}
-        >
-          {/* Message Text */}
-          <div
-            className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
-            dangerouslySetInnerHTML={{
-              __html: (() => {
-                let html = msg.text || "";
-                // Markdown formatting
-                html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-                html = html.replace(
-                  /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,
-                  "<em>$1</em>"
-                );
-                let listCounter = 0;
-                html = html.replace(
-                  /^[\s]*[-•*]\s+(.*)$/gm,
-                  (match, content) => {
-                    listCounter++;
-                    return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
-                  }
-                );
-                return html;
-              })(),
-            }}
-          />
-
-          {/* Sources */}
-          {msg.sources && msg.sources.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-xs text-text-muted space-y-1">
-              <div className="font-semibold text-primary">Sources</div>
-              {msg.sources.map((src, i) => (
-                <a
-                  key={i}
-                  href={src}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate hover:underline text-blue-600 dark:text-blue-400"
+          {/* Messages */}
+          {visibleMessages.map((msg, index) => (
+            <div
+              key={index}
+              className={`flex animate-slide-up ${msg.role === "user" ? "justify-end" : "justify-start"
+                }`}
+            >
+              <div
+                className={`flex max-w-[85%] ${msg.role === "user" ? "flex-row-reverse" : "flex-row"
+                  }`}
+              >
+                {/* Avatar */}
+                <div
+                  className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 shadow-theme ${msg.role === "user"
+                    ? "bg-primary text-white ml-3"
+                    : "bg-secondary/10 text-secondary mr-3"
+                    }`}
                 >
-                  {src}
-                </a>
-              ))}
+                  {msg.role === "user" ? (
+                    <Activity size={16} />
+                  ) : (
+                    <MessageSquare size={16} />
+                  )}
+                </div>
+
+                {/* Bubble */}
+                <div
+                  className={`p-4 rounded-2xl shadow-theme-lg text-[15px] leading-relaxed ${msg.role === "user"
+                    ? "bg-primary text-white rounded-tr-none"
+                    : "bg-surface dark:bg-slate-800 text-text-main dark:text-slate-100 border border-border rounded-tl-none"
+                    }`}
+                >
+                  {/* Message Text */}
+                  <div
+                    className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{
+                      __html: (() => {
+                        let html = msg.text || "";
+                        // Markdown formatting
+                        html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+                        html = html.replace(
+                          /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,
+                          "<em>$1</em>"
+                        );
+                        let listCounter = 0;
+                        html = html.replace(
+                          /^[\s]*[-•*]\s+(.*)$/gm,
+                          (match, content) => {
+                            listCounter++;
+                            return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
+                          }
+                        );
+                        return html;
+                      })(),
+                    }}
+                  />
+
+                  {/* Sources */}
+                  {msg.sources && msg.sources.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-xs text-text-muted space-y-1">
+                      <div className="font-semibold text-primary">Sources</div>
+                      {msg.sources.map((src, i) => (
+                        <a
+                          key={i}
+                          href={src}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block truncate hover:underline text-blue-600 dark:text-blue-400"
+                        >
+                          {src}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* ✅ INSERT STREAMING BUBBLE HERE */}
+          {streamingMessage && (
+            <div className="flex justify-start animate-slide-up">
+              <div className="flex max-w-[85%] flex-row">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3 text-secondary">
+                  <MessageSquare size={16} />
+                </div>
+                <div className="p-4 rounded-2xl rounded-tl-none bg-surface dark:bg-slate-800 border border-border shadow-theme">
+                  <div className="whitespace-pre-wrap text-text-main dark:text-slate-100 text-[15px] leading-relaxed">
+                    {streamingMessage}
+                    <span className="inline-block w-1.5 h-4 ml-1 bg-primary align-middle animate-pulse" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+
+
+          {/* Improved Typing Indicator */}
+          {isChatLoading && (
+            <div className="flex justify-start animate-slide-up">
+              <div className="flex max-w-[85%] flex-row">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3 text-secondary">
+                  <MessageSquare size={16} />
+                </div>
+                <div className="p-4 rounded-2xl rounded-tl-none bg-surface border border-border shadow-theme">
+                  <div className="flex space-x-2">
+                    <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
-      </div>
-    </div>
-  ))}
-
-  {/* Improved Typing Indicator */}
-  {isChatLoading && (
-    <div className="flex justify-start animate-slide-up">
-      <div className="flex max-w-[85%] flex-row">
-        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3 text-secondary">
-          <MessageSquare size={16} />
-        </div>
-        <div className="p-4 rounded-2xl rounded-tl-none bg-surface border border-border shadow-theme">
-          <div className="flex space-x-2">
-            <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-            <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-            <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-          </div>
-        </div>
-      </div>
-    </div>
-  )}
-</div>
 
 
         <form
@@ -4590,20 +5046,39 @@ Rules:
 
       if (response.ok) {
         const data = await response.json();
-        const busySet = new Set();
-        if (data.items) {
-          data.items.forEach(event => {
-            const start = event.start.dateTime || event.start.date; // dateTime for timed, date for all-day
-            if (start) {
-              const dateStr = start.substring(0, 10); // YYYY-MM-DD
-              busySet.add(dateStr);
+
+        const medSet = new Set();          // 💊
+        const engagementSet = new Set();   // generic events
+        const appointmentSet = new Set();  // doctor visits / full body checkups
+
+        if (Array.isArray(data.items)) {
+          data.items.forEach((event) => {
+            const start = event.start?.dateTime || event.start?.date;
+            if (!start) return;
+
+            const dateStr = start.substring(0, 10); // YYYY-MM-DD
+            const summary = (event.summary || '').trim();
+
+            const isMedicationEvent = summary.startsWith('💊 ');
+            const isQuarterlyAppt = summary.includes('Doctor Visit');
+            const isYearlyAppt = summary.includes('Full Body Checkup');
+
+            if (isMedicationEvent) {
+              medSet.add(dateStr);
+            } else if (isQuarterlyAppt || isYearlyAppt) {
+              appointmentSet.add(dateStr);
+            } else {
+              engagementSet.add(dateStr);
             }
           });
         }
-        setCalendarEvents(busySet);
+
+        setCalendarMedDays(medSet);
+        setCalendarEngagementDays(engagementSet);
+        setCalendarAppointmentDays(appointmentSet);
       }
     } catch (e) {
-      console.error("Error fetching calendar events:", e);
+      console.error('Error fetching calendar events:', e);
     }
   };
 
@@ -4627,24 +5102,43 @@ Rules:
     }
 
     for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(year, month, d);
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const isBusy = calendarEvents.has(dateStr);
+
+      const hasMed = calendarMedDays.has(dateStr);             // red dot
+      const hasEngagement = calendarEngagementDays.has(dateStr); // yellow dot
+      const hasAppointment = calendarAppointmentDays.has(dateStr); // circle day
       const isSelected = selectedDate === dateStr;
       const isToday = dateStr === getTodayDateKey();
+
+      const isAppointmentDay = hasAppointment;
 
       days.push(
         <button
           key={d}
           onClick={() => onSelect(dateStr)}
           className={`h-8 w-8 rounded-full flex items-center justify-center text-xs relative transition-all
-            ${isSelected ? 'bg-primary text-white font-bold shadow-md' : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-text-main dark:text-slate-200'}
-            ${isToday && !isSelected ? 'border border-primary text-primary font-bold' : ''}
+            ${isAppointmentDay
+              // Doctor's appointment → encircled
+              ? 'border-2 border-purple-500 text-purple-600 font-bold bg-white dark:bg-slate-900 shadow-md'
+              : isSelected
+                // Plain selection highlight (when choosing before booking)
+                ? 'bg-primary text-white font-bold shadow-md'
+                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-text-main dark:text-slate-200'
+            }
+            ${isToday && !isAppointmentDay && !isSelected ? 'border border-primary text-primary font-bold' : ''}
           `}
         >
           {d}
-          {isBusy && !isSelected && (
-            <span className="absolute bottom-1 w-1 h-1 bg-red-500 rounded-full"></span>
+
+          {/* Dots: red for meds; yellow for other engagements.
+              DO NOT show yellow on appointment days (you only see the circle there). */}
+          {(hasMed || (hasEngagement && !hasAppointment)) && (
+            <div className="absolute bottom-1 inset-x-0 flex items-center justify-center gap-0.5">
+              {hasMed && <span className="w-1.5 h-1.5 rounded-full bg-red-500" />}
+              {hasEngagement && !hasAppointment && (
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+              )}
+            </div>
           )}
         </button>
       );
@@ -4791,15 +5285,15 @@ Rules:
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
               <Calendar size={80} className="text-purple-500" />
             </div>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-3 mb-4">
               <h3 className="text-lg font-bold text-purple-600 dark:text-purple-400 flex items-center uppercase tracking-wider">
                 <Calendar size={20} className="mr-2" /> Weekly
               </h3>
+
               <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 text-xs font-bold rounded-full">
                 {daysRemainingInWeek} Days Left
               </span>
             </div>
-
             <div className="space-y-4">
               <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-100 dark:border-purple-800/50">
                 <div className="flex items-center mb-3">
@@ -4893,6 +5387,16 @@ Rules:
                 <Calendar size={18} />
                 Book on Google Calendar
               </a>
+
+              {/* Calendar Legend */}
+              <div className="mt-4 w-full bg-orange-50 dark:bg-orange-900/20 p-4 rounded-2xl border border-orange-100 dark:border-orange-800/50">
+                <h4 className="font-bold text-orange-700 dark:text-orange-300 mb-2 text-sm">Calendar Legend:</h4>
+                <ul className="text-xs text-text-muted dark:text-slate-400 space-y-2">
+                  <li className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-red-500"></span> Medicine Reminders</li>
+                  <li className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400"></span> Other Engagements</li>
+                  <li className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full border-2 border-purple-500"></span> Doctor's Appointment</li>
+                </ul>
+              </div>
             </div>
           </div>
 
@@ -5210,55 +5714,89 @@ Rules:
       <ColorBlindFilters />
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-6 border-b border-slate-200 dark:border-slate-700 header-line-pulse">
-          <div className="flex items-center mb-4 md:mb-0">
-            <div className="w-25 h-25 rounded-xl flex items-center justify-center mr-3">
-              <img
-                src={appIcon}
-                alt="VytalCare Logo"
-                className="w-10 h-10 object-contain"
-                style={{ width: "50px", height: "50px", marginRight: "10px" }}
-              />
+
+        {/* ✨ BEAUTIFUL GRADIENT HEADER START */}
+
+        <div className="sticky top-0 z-50 mb-0 -mx-4 sm:-mx-8 px-4 sm:px-8 py-4 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 flex flex-col md:flex-row justify-between items-center transition-all duration-300 shadow-sm">
+
+          {/* Left: Logo & Gradient Title */}
+          <div className="flex items-center mb-4 md:mb-0 group cursor-default">
+            {/* FIXED LOGO CONTAINER - Increased to w-14 h-14 for a bigger "border" look */}
+            <div className="relative w-14 h-14 mr-4 flex-shrink-0">
+              {/* Glow Effect */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-primary to-secondary rounded-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500 blur-md" />
+
+              {/* Logo Box - Added p-2 padding so the logo doesn't touch the edges */}
+              <div className="relative w-full h-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-center justify-center overflow-hidden p-1">
+                <img
+                  src={appIcon}
+                  alt="VytalCare Logo"
+                  // scale-125 zooms in slightly to trim transparent edges, but padding keeps it contained
+                  className="w-full h-full object-contain scale-125"
+                />
+              </div>
             </div>
 
-            <h1 className="text-3xl font-bold text-text-main dark:text-white tracking-tight"
-              style={{ marginLeft: "-15px" }}>
-              VytalCare
+            <div className="flex flex-col justify-center h-14">
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-primary via-teal-500 to-secondary tracking-tight leading-none pb-1">
+                VytalCare
+              </h1>
 
-            </h1>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveInfoMetric('about');
+              }}
+              className="w-5 h-5 flex items-center justify-center rounded-full border border-slate-300 dark:border-slate-600 text-slate-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all mt-0.5"
+              title="About VytalCare"
+              >
+           <Info size={12} strokeWidth={2.5} />
+         </button>
+      </div>
 
-
+              <span className="text-[10px] font-bold tracking-widest text-text-muted uppercase opacity-70 ml-0.5 leading-none">
+                AI Health Companion
+              </span>
+            </div>
           </div>
 
-          <div className="flex bg-white dark:bg-slate-800 p-1.5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+          {/* Center: Glassy Tabs */}
+          <div className="flex bg-slate-100/80 dark:bg-slate-800/50 p-1.5 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-md shadow-inner mb-4 md:mb-0">
             {[
               { id: 'reminders', icon: Bell, label: 'Reminders' },
-              { id: 'health_plan', icon: Calendar, label: 'Health Plan' },
+              { id: 'health_plan', icon: Calendar, label: 'Plan' },
               { id: 'activity', icon: Activity, label: 'Activity' },
-              { id: 'chatbot', icon: MessageSquare, label: 'Chatbot' }
+              { id: 'chatbot', icon: MessageSquare, label: 'Chat' }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center px-5 py-2.5 rounded-xl font-medium transition-all duration-200 ${activeTab === tab.id
-                  ? 'bg-primary text-white shadow-md shadow-primary/20'
-                  : 'text-text-muted dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/30 hover:text-text-main dark:hover:text-slate-200'
+                className={`flex items-center px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === tab.id
+                  ? 'bg-white dark:bg-slate-700 text-primary shadow-md scale-100'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/50'
                   }`}
               >
-                <tab.icon size={18} className="mr-2" />
+                <tab.icon size={16} className={`mr-2 ${activeTab === tab.id ? 'fill-current' : ''}`} />
                 {tab.label}
               </button>
             ))}
           </div>
+
+          {/* Right: Emergency Button with Pulse */}
           <button
-            className="mt-2 px-5 py-2.5 bg-red-500 dark:bg-red-800/80 text-white font-semibold rounded-xl shadow-md shadow-red-300 dark:shadow-red-900/30
-        hover:bg-red-400 dark:hover:bg-red-700/80 transition-all duration-200 flex items-center gap-2
-        "
+            className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-500/30 
+    hover:shadow-red-500/50 hover:scale-105 active:scale-95 transition-all duration-200 flex items-center gap-2 group"
             onClick={() => setActiveTab('emergency')}
           >
-            🚑 EMERGENCY
+            <div className="w-2 h-2 bg-white rounded-full animate-ping mr-1" />
+            EMERGENCY
           </button>
         </div>
+        {/* ✨ BEAUTIFUL GRADIENT HEADER END */}
+
+        {/* ✅ FIXED PULSE LINE (more visible) */}
+        <div className="w-full h-[3px] bg-slate-300 dark:bg-slate-600 header-line-pulse mb-6 relative z-40" />
 
         {renderError()}
 
