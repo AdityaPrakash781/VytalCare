@@ -11,12 +11,14 @@
   "dependencies": {
     "@langchain/langgraph": "latest",
     "@qdrant/js-client-rest": "latest",
-    "node-fetch": "^3.3.2",
     "dotenv": "^16.4.5",
-    "zod": "latest",
+    "firebase": "^10.8.0",
+    "lucide-react": "^0.559.0",
+    "node-fetch": "^3.3.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "firebase": "^10.8.0"
+    "recharts": "^3.5.1",
+    "zod": "latest"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.0",
