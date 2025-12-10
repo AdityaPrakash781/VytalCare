@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./src/assets/iconn.png" alt="VytalCare Logo" width="120" height="120" />
+  <img src="src/assets/iconn.webp" alt="VytalCare Logo" width="120" height="120" />
   <h1 align="center">VytalCare</h1>
   <strong>The Agentic AI Health Companion</strong>
   <br />
