@@ -287,7 +287,7 @@ html.transitioning *::after {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 4px;
   /* Slightly thicker for visibility */
 
   /* The Gradient: Glowing Dot
