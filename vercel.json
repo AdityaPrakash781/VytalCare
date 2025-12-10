@@ -1,8 +1,8 @@
-{
-  "version": 2,
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+\{
   "framework": "vite",
+  "outputDirectory": "dist",
+  "buildCommand": "npm run build",
+
   "functions": {
     "api/*.js": {
       "runtime": "nodejs20.x",
@@ -10,8 +10,9 @@
       "maxDuration": 20
     }
   },
+
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1.js" },
+    { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
