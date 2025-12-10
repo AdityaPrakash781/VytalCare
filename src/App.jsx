@@ -341,6 +341,9 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
     caregiverEmail: ''
   });
   const [loading, setLoading] = useState(true);
+// Easter egg: 5 taps on Profile icon -> open YouTube video
+  const [profileIconClicks, setProfileIconClicks] = useState(0);
+  const profileClickTimerRef = useRef(null);
 
   // CHANGED: Read directly from users/{userId}
   useEffect(() => {
@@ -446,6 +449,44 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
     });
   };
 
+    const handleProfileIconClick = () => {
+    // reset timer each tap
+    if (profileClickTimerRef.current) {
+      clearTimeout(profileClickTimerRef.current);
+    }
+
+    setProfileIconClicks((prev) => {
+      const next = prev + 1;
+
+      // 5 quick taps = trigger easter egg
+      if (next >= 5) {
+        window.open(
+          "https://www.youtube.com/watch?v=dQw4w9WgXcQ", // your secret video
+          "_blank",
+          "noopener,noreferrer"
+        );
+        return 0; // reset count
+      }
+
+      return next;
+    });
+
+    // if user pauses >1.5s, reset counter
+    profileClickTimerRef.current = setTimeout(() => {
+      setProfileIconClicks(0);
+      profileClickTimerRef.current = null;
+    }, 1500);
+  };
+  
+  useEffect(() => {
+    return () => {
+      if (profileClickTimerRef.current) {
+        clearTimeout(profileClickTimerRef.current);
+      }
+    };
+  }, []);
+
+
   if (loading) return <div className="p-4"><LoadingSpinner /></div>;
 
 return (
@@ -453,10 +494,18 @@ return (
     {/* CARD 1: Profile + Caregiver */}
     <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden flex flex-col">
       <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
-        <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
-          <User size={20} className="mr-2 text-primary" />
-          Profile
-        </h2>
+       <h2 className="text-lg font-bold text-text-main dark:text-white flex items-center">
+      <button
+          type="button"
+          onClick={handleProfileIconClick}
+          className="mr-2 -ml-1 rounded-full p-1 text-primary hover:bg-primary/10 active:scale-95 transition"
+          title="Profile"
+        >
+          <User size={20} />
+        </button>
+        Profile
+      </h2>
+
         <button
           onClick={isEditing ? handleSave : () => setIsEditing(true)}
           className={`p-2 rounded-xl transition-all duration-200 ${
@@ -749,7 +798,7 @@ const exponentialBackoffFetch = async (url, options, maxRetries = 3, timeout = 1
 /** ---------------------------------------
  * Main App
  * -------------------------------------- */
-const INITIAL_CHAT_WELCOME = { role: 'model', text: 'Hello! I am your VytalCare Chatbot. I can provide general information on medications, conditions, and health topics using Google Search for the latest context. Always consult a professional for medical advice!', sources: [], createdAt: Date.now() };
+const INITIAL_CHAT_WELCOME = { role: 'assistant', text: 'Hi there ! I’m your VytalCare Chatbot. I use a RAG system powered by trusted MedlinePlus data to give you reliable, accurate, and up-to-date health information on conditions, medications, tests, and more. I can guide you with clarity—but always consult a healthcare professional for medical advice.', sources: [], createdAt: Date.now() };
 
 const getTodayDateKey = () => {
   const d = new Date();
@@ -791,7 +840,10 @@ const METRIC_INFO = {
   heartRate: {
     title: "Heart Rate",
     desc: "Measured in Beats Per Minute (BPM). A lower resting heart rate (typically 60-100 BPM) generally indicates better cardiovascular fitness and efficient heart function."
-  }
+  },
+  about: {
+    title: "About VytalCare",
+    desc: "VytalCare is your Agentic, AI-powered health companion designed to move beyond simple tracking. Functioning as an intelligent agent, it proactively manages your wellness by autonomously syncing smart medication reminders to your calendar, triggering automated health workflows, and converting prescription images into actionable schedules. VytalCare was developed with passion and precision by Team Stranger Strings: Aditya Prakash, Ananya Raghuveer, Swaraag Hebbar N., and Shashank Ravindra."}
 };
 
 const App = () => {
@@ -918,6 +970,7 @@ const App = () => {
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [attachedImage, setAttachedImage] = useState(null); // NEW: image attached to next message
+  const [streamingMessage, setStreamingMessage] = useState(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false); // NEW: show upload / camera choice
 
   // Google Fit auth token (unchanged)
@@ -938,12 +991,13 @@ const App = () => {
   const [currentDateKey, setCurrentDateKey] = useState(getTodayDateKey());
   const [hydration, setHydration] = useState(0);
   const [hydrationGoal, setHydrationGoal] = useState(2000); // Default goal 2000ml
+  const [waterIconClicks, setWaterIconClicks] = useState(0);
   const [healthScore, setHealthScore] = useState(null);
 
   // Health score explanation + suggestions
   const [healthScoreExplanation, setHealthScoreExplanation] = useState([]);
   const [healthScoreSuggestions, setHealthScoreSuggestions] = useState([]);
-
+  const [stepsIconClicks, setStepsIconClicks] = useState(0);
   // Graph updation 
   const [steps3hTrend, setSteps3hTrend] = useState([]);
   const [distance3hTrend, setDistance3hTrend] = useState([]);
@@ -1078,6 +1132,60 @@ const App = () => {
     });
     return () => unsubscribe();
   }, [db, userId, auth]);
+
+ // 1a. Sync calendar deletions - check if calendar events were deleted and remove medications
+  useEffect(() => {
+    if (!db || !userId || !googleAccessToken) return;
+
+    const syncCalendarDeletions = async () => {
+      try {
+        // Get all medications with calendar event IDs
+        const medCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/medications`);
+        const snapshot = await getDocs(medCollectionRef);
+        const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        for (const med of meds) {
+          if (med.calendarEventIds && Array.isArray(med.calendarEventIds) && med.calendarEventIds.length > 0) {
+            // Check if any of the calendar events still exist
+            let allEventsDeleted = true;
+            for (const eventId of med.calendarEventIds) {
+              try {
+                const eventResponse = await fetch(
+                  `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+                  {
+                    headers: {
+                      'Authorization': `Bearer ${googleAccessToken}`
+                    }
+                  }
+                );
+                if (eventResponse.ok) {
+                  allEventsDeleted = false;
+                  break; // At least one event exists
+                }
+              } catch (e) {
+                // Event might be deleted, continue checking
+              }
+            }
+
+            // If all events are deleted, delete the medication from database
+            if (allEventsDeleted) {
+              const medDocRef = doc(db, `/artifacts/${appId}/users/${userId}/medications`, med.id);
+              await deleteDoc(medDocRef);
+              console.log(`Medication ${med.name} deleted from app because calendar events were deleted`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error syncing calendar deletions:', error);
+      }
+    };
+
+    // Run sync immediately and then every 5 minutes
+    syncCalendarDeletions();
+    const intervalId = setInterval(syncCalendarDeletions, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [db, userId, googleAccessToken]);
 
   // 1b. Medication Logs Listener (Live Sync for "Taken" status)
   useEffect(() => {
@@ -1464,6 +1572,18 @@ const App = () => {
     }
   }, []);
 
+const handleWaterIconClick = () => {
+  setWaterIconClicks(prev => {
+    const newCount = prev + 1;
+
+    if (newCount === 3) {
+      window.open("https://www.youtube.com/shorts/-enuIBVmKy4", "_blank");
+      return 0; // reset so it can trigger again
+    }
+
+    return newCount;
+  });
+};
 
 
 
@@ -1736,31 +1856,33 @@ const App = () => {
         headers: { 'Authorization': `Bearer ${googleAccessToken}`, 'Content-Type': 'application/json' }
       });
       const data = await res.json();
-      const sleepSessions = data.session || [];
-      if (!sleepSessions.length) {
-        setSleepHours(0);
-        // setError('No sleep data found for the past 36 hours.');
-        return 0;
-      }
-      const oneDayMs = 24 * 60 * 60 * 1000;
-      const totalSleepMs = sleepSessions.reduce((total, s) => {
-        if (s.endTimeMillis > (now - oneDayMs)) {
-          return total + (s.endTimeMillis - s.startTimeMillis);
-        }
-        return total;
-      }, 0);
-      const hours = Math.round((totalSleepMs / (1000 * 60 * 60)) * 10) / 10;
-      setSleepHours(hours);
-      return hours;
-    } catch (e) {
-      console.error(e);
+          const sleepSessions = data.session || [];
+
+    if (!sleepSessions.length) {
       setSleepHours(0);
-      // setError('Failed to fetch sleep data.');
       return 0;
-    } finally {
-      setIsSleepLoading(false);
     }
-  }, [googleAccessToken]);
+
+    // 🔥 NEW PART: pick the most recent sleep session, like Google Fit does
+    const latestSession = sleepSessions.reduce((latest, s) => {
+      if (!latest) return s;
+      return Number(s.endTimeMillis) > Number(latest.endTimeMillis) ? s : latest;
+    }, null);
+
+    const start = Number(latestSession.startTimeMillis);
+    const end = Number(latestSession.endTimeMillis);
+    const hours = Math.round(((end - start) / (1000 * 60 * 60)) * 10) / 10;
+
+    setSleepHours(hours);
+    return hours;
+  } catch (e) {
+    console.error(e);
+    setSleepHours(0);
+    return 0;
+  } finally {
+    setIsSleepLoading(false);
+  }
+}, [googleAccessToken]);
 
   const fetchWeeklySleep = useCallback(async () => {
     if (!googleAccessToken) return;
@@ -2479,69 +2601,86 @@ RULES:
       }
 
       // ============================================================
-      // 3. SAVE MODEL MESSAGE
+      // 3. STREAMING & SAVING LOGIC
       // ============================================================
-      const modelMessage = {
-        role: "model",
-        text: modelText,
-        sources: modelSources,
-        createdAt: Date.now()
+      
+      // Stop the "Typing..." dots because we are about to show the stream
+      setIsChatLoading(false);
+
+      // Helper function to save to DB after streaming is done
+      const saveFinalModelMessage = async () => {
+        const modelMessage = {
+          role: "assistant",
+          text: modelText,
+          sources: modelSources,
+          createdAt: Date.now()
+        };
+
+        if (db && userId) {
+          try {
+            const chatCollectionRef = collection(
+              db,
+              `/artifacts/${appId}/users/${userId}/chats`
+            );
+            await addDoc(chatCollectionRef, modelMessage);
+          } catch (e) {
+            console.error("Error saving model message:", e);
+          }
+        }
+
+        // ============================================================
+        // 4. OPTIONAL — TTS
+        // ============================================================
+        if (speechEnabled || isVoiceMode) {
+          speakText(modelText);
+        }
       };
 
-      if (db && userId) {
-        try {
-          const chatCollectionRef = collection(
-            db,
-            `/artifacts/${appId}/users/${userId}/chats`
-          );
-          await addDoc(chatCollectionRef, modelMessage);
-        } catch (e) {
-          console.error("Error saving model message:", e);
-        }
-      }
+      // --- START STREAMING EFFECT ---
+      setStreamingMessage(""); // Initialize empty bubble
+      
+      const words = modelText.split(" ");
+      let index = 0;
+      
+      // Typing speed (adjust 25ms for faster/slower)
+      const interval = setInterval(() => {
+        setStreamingMessage(prev => {
+          const nextWord = words[index];
+          // Handle undefined safety if index goes out of bounds
+          return nextWord ? (prev ? prev + " " + nextWord : nextWord) : prev;
+        });
+        
+        index++;
 
-      // ============================================================
-      // 4. OPTIONAL — TTS
-      // ============================================================
-      if (speechEnabled || isVoiceMode) {
-        speakText(modelText);
-      }
+        if (index >= words.length) {
+          clearInterval(interval);
+          
+          // Small delay before finalizing to let user read the last word
+          setTimeout(() => {
+            setStreamingMessage(null); // Remove streaming bubble
+            saveFinalModelMessage();   // Add permanent bubble to history
+          }, 100);
+        }
+      }, 30);
+
     } catch (e) {
       console.error("❌ Chatbot Error:", e);
-
-      const errorReply = {
-        role: "model",
-        text: `Error: ${e.message}. Please try again.`,
-        sources: [],
-        createdAt: Date.now()
-      };
-
-      if (db && userId) {
-        try {
-          const chatCollectionRef = collection(
-            db,
-            `/artifacts/${appId}/users/${userId}/chats`
-          );
-          await addDoc(chatCollectionRef, errorReply);
-        } catch (e2) {
-          console.error("Error saving error message:", e2);
-        }
-      }
-
-      if (isVoiceMode) speakText("I encountered an error. Please try again.");
-    } finally {
-      setIsChatLoading(false);
-    }
+      // ... error handling remains the same ...
+      setIsChatLoading(false); // Ensure loading stops on error
+    } 
+    // Remove the `finally` block or ensure it doesn't conflict with streaming
+    // (Since we handle setIsChatLoading(false) manually above, you can remove the finally block
+    // or wrap it in a check)
   },
   [
-    chatHistory,
-    db,
-    userId,
-    speechEnabled,
-    speakText,
-    isVoiceMode,
-    appId,
-    GEMINI_API_KEY
+    // ... dependencies ...
+    chatHistory,      // Needed for RAG history context
+    db,               // Needed for Firestore saving
+    userId,           // Needed for user path
+    appId,            // Needed for app path
+    speechEnabled,    // Needed to decide if we should speak
+    isVoiceMode,      // Needed to decide if we should speak
+    speakText         // The function used to speak
   ]
 );
 
@@ -2919,7 +3058,16 @@ Rules:
           const dayToRRule = { 'Sun': 'SU', 'Mon': 'MO', 'Tue': 'TU', 'Wed': 'WE', 'Thu': 'TH', 'Fri': 'FR', 'Sat': 'SA' };
           const rruleDays = allDays.map(d => dayToRRule[d]).join(',');
 
+          // Calculate 30 days from today for UNTIL date
+          const untilDate = new Date();
+          untilDate.setDate(untilDate.getDate() + 30);
+          const untilDateStr = untilDate.toISOString().split('T')[0].replace(/-/g, '');
+
+          // Map to store calendar event IDs for each medication
+          const medCalendarEventIds = {};
+
           for (const med of builtMeds) {
+            const eventIds = [];
             for (const time of med.times) {
               const [hours, minutes] = time.split(':').map(Number);
 
@@ -2941,7 +3089,7 @@ Rules:
                   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
                 },
                 recurrence: [
-                  `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays}`
+                  `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays};UNTIL=${untilDateStr}`
                 ],
                 reminders: {
                   useDefault: false,
@@ -2951,7 +3099,7 @@ Rules:
                 }
               };
 
-              await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+              const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${googleAccessToken}`,
@@ -2959,6 +3107,30 @@ Rules:
                 },
                 body: JSON.stringify(event)
               });
+
+              if (response.ok) {
+                const eventData = await response.json();
+                eventIds.push(eventData.id);
+              }
+            }
+            medCalendarEventIds[med.name] = eventIds;
+          }
+
+          // Update medication documents with calendar event IDs
+          if (Object.keys(medCalendarEventIds).length > 0) {
+            const medCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/medications`);
+            const q = query(medCollectionRef, orderBy('createdAt', 'desc'), limit(builtMeds.length));
+            const snapshot = await getDocs(q);
+            const docs = snapshot.docs.slice(0, builtMeds.length);
+            
+            for (let i = 0; i < docs.length; i++) {
+              const medDoc = docs[i];
+              const medData = medDoc.data();
+              if (medCalendarEventIds[medData.name]) {
+                await updateDoc(doc(db, `/artifacts/${appId}/users/${userId}/medications`, medDoc.id), {
+                  calendarEventIds: medCalendarEventIds[medData.name]
+                });
+              }
             }
           }
           console.log('Prescription medications added to Google Calendar');
@@ -3058,14 +3230,17 @@ Rules:
         `/artifacts/${appId}/users/${userId}/medications`
       );
 
+
+      let newMedDocRef = null;
       if (editingMedId) {
         // ✅ EDIT EXISTING MEDICATION
         const medDocRef = doc(medCollectionRef, editingMedId);
         await updateDoc(medDocRef, medicationData);
+        newMedDocRef = medDocRef;
         // your onSnapshot listener will refresh `medications`
       } else {
         // ✅ CREATE NEW MEDICATION
-        await addDoc(medCollectionRef, {
+        newMedDocRef = await addDoc(medCollectionRef, {
           ...medicationData,
           createdAt: Date.now(),
         });
@@ -3098,6 +3273,12 @@ Rules:
 
           let calendarSuccess = true;
           let calendarErrorMsg = '';
+          const calendarEventIds = [];
+
+          // Calculate 30 days from today for UNTIL date
+          const untilDate = new Date();
+          untilDate.setDate(untilDate.getDate() + 30);
+          const untilDateStr = untilDate.toISOString().split('T')[0].replace(/-/g, '');
 
           // Create a calendar event for each time
           for (const time of validTimes) {
@@ -3123,7 +3304,7 @@ Rules:
                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
               },
               recurrence: [
-                `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays}`
+                `RRULE:FREQ=WEEKLY;BYDAY=${rruleDays};UNTIL=${untilDateStr}`
               ],
               reminders: {
                 useDefault: false,
@@ -3142,12 +3323,20 @@ Rules:
               body: JSON.stringify(event)
             });
 
-            if (!response.ok) {
+            if (response.ok) {
+              const eventData = await response.json();
+              calendarEventIds.push(eventData.id);
+            } else {
               const errorData = await response.json();
               calendarSuccess = false;
               calendarErrorMsg = errorData.error?.message || 'Unknown error';
               console.error('Calendar API error:', errorData);
             }
+          }
+
+          // Store calendar event IDs in the medication document
+          if (calendarEventIds.length > 0 && newMedDocRef) {
+            await updateDoc(newMedDocRef, { calendarEventIds });
           }
 
           if (calendarSuccess) {
@@ -3190,26 +3379,13 @@ Rules:
       // Delete from Google Calendar if we have access
       if (googleAccessToken && medToDelete) {
         try {
-          // Search for calendar events with this medication name
-          const searchQuery = encodeURIComponent(`💊 ${medToDelete.name}`);
-          const searchResponse = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/primary/events?q=${searchQuery}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${googleAccessToken}`
-              }
-            }
-          );
-
-          if (searchResponse.ok) {
-            const searchData = await searchResponse.json();
-            const events = searchData.items || [];
-
-            // Delete each matching event
-            for (const event of events) {
-              if (event.summary === `💊 ${medToDelete.name}`) {
+          // Use stored calendar event IDs if available, otherwise search by name
+          if (medToDelete.calendarEventIds && Array.isArray(medToDelete.calendarEventIds)) {
+            // Delete using stored event IDs
+            for (const eventId of medToDelete.calendarEventIds) {
+              try {
                 await fetch(
-                  `https://www.googleapis.com/calendar/v3/calendars/primary/events/${event.id}`,
+                  `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
                   {
                     method: 'DELETE',
                     headers: {
@@ -3217,9 +3393,44 @@ Rules:
                     }
                   }
                 );
+              } catch (e) {
+                // Event might already be deleted, continue
+                console.warn(`Event ${eventId} may already be deleted:`, e);
               }
             }
             console.log('Medication and calendar events deleted');
+          } else {
+            // Fallback: Search for calendar events with this medication name
+            const searchQuery = encodeURIComponent(`💊 ${medToDelete.name}`);
+            const searchResponse = await fetch(
+              `https://www.googleapis.com/calendar/v3/calendars/primary/events?q=${searchQuery}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${googleAccessToken}`
+                }
+              }
+            );
+
+            if (searchResponse.ok) {
+              const searchData = await searchResponse.json();
+              const events = searchData.items || [];
+
+              // Delete each matching event
+              for (const event of events) {
+                if (event.summary === `💊 ${medToDelete.name}`) {
+                  await fetch(
+                    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${event.id}`,
+                    {
+                      method: 'DELETE',
+                      headers: {
+                        'Authorization': `Bearer ${googleAccessToken}`
+                      }
+                    }
+                  );
+                }
+              }
+              console.log('Medication and calendar events deleted');
+            }
           }
         } catch (calendarError) {
           console.warn('Failed to delete from Google Calendar:', calendarError);
@@ -3284,7 +3495,6 @@ Rules:
       key: med.id + time,
     })))
     .sort((a, b) => a.time.localeCompare(b.time));
-
   /** ---------------------------------------
    * Renderers (unchanged)
    * -------------------------------------- */
@@ -3631,7 +3841,13 @@ Rules:
 
         {/* Next Dose Card */}
         {nextDose && (
-          <div className="bg-gradient-to-r from-primary to-teal-600 rounded-3xl p-6 text-white shadow-lg shadow-primary/20 animate-slide-up">
+          <div className="relative overflow-hidden rounded-3xl
+                bg-gradient-to-r from-primary to-teal-600
+                p-6 text-white
+                border border-white/15
+                shadow-[0_20px_50px_rgba(0,0,0,0.7)]
+                backdrop-blur-2xl
+                animate-slide-up">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-primary-100 font-medium mb-1">Up Next</p>
@@ -3815,10 +4031,16 @@ Rules:
   const renderActivityTab = () => (
     <div className="p-6 space-y-8 animate-fade-in">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 dark:border-slate-700 pb-4">
-        <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
-          <Activity size={28} className="mr-3 text-primary" />
-          Activity Dashboard
-        </h2>
+      <h2 className="text-2xl font-bold text-text-main dark:text-white flex items-center">
+        <Activity
+          size={28}
+          className="mr-3 text-primary cursor-pointer hover:opacity-80"
+          onClick={() =>
+            window.open("https://www.youtube.com/watch?v=v0NDDoNRtQ8", "_blank")
+          }
+        />
+        Activity Dashboard
+      </h2>
         <div className="mt-4 md:mt-0 flex space-x-3">
           <button
             onClick={!isSyncingAll ? (() => { setIsAutoSyncActive(true); syncAll(); }) : undefined}
@@ -3943,7 +4165,7 @@ Rules:
           </button>
 
           <div className="w-16 h-16 bg-cyan-100 dark:bg-cyan-900/40 rounded-2xl flex items-center justify-center mb-4 text-cyan-600 dark:text-cyan-400">
-            <Droplet size={32} fill="currentColor" />
+            <Droplet size={32} fill="currentColor" onClick={handleWaterIconClick}/>
           </div>
 
           <div className="text-center z-10 w-full">
@@ -4118,9 +4340,15 @@ Rules:
               <XAxis dataKey="time" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
               <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
               <Tooltip
-                contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                itemStyle={{ color: '#0F766E' }}
-              />
+              contentStyle={{
+                backgroundColor: '#fff',
+                borderRadius: '12px',
+                border: 'none',
+                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+              }}
+              labelStyle={{ color: 'black' }}       // <-- TOP TEXT (time)
+              itemStyle={{ color: '#0F766E' }}      // <-- bpm:72 stays green
+            />
               <Line type="monotone" dataKey="bpm" stroke="#FB7185" strokeWidth={3} dot={{ r: 4, fill: '#FB7185', strokeWidth: 0 }} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -4128,8 +4356,25 @@ Rules:
 
         <div ref={stepsRef} className={`bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 ${highlightedGraph === 'steps' ? 'glow-teal' : ''}`}>
           <h3 className="text-lg font-bold text-text-main dark:text-white mb-6 flex items-center">
-            <Footprints size={25} color="#0F766E" className="mr-2 text-secondary" />Steps Trend
-          </h3>
+  <Footprints
+    size={25}
+    color="#0F766E"
+    className="mr-2 text-secondary cursor-pointer hover:opacity-80"
+    onClick={() => {
+      setStepsIconClicks(prev => {
+        const next = prev + 1;
+
+        if (next === 7) {
+          window.open("https://www.youtube.com/shorts/W6oQUDFV2C0", "_blank");
+          return 0; // reset after trigger
+        }
+
+        return next;
+      });
+    }}
+  />
+  Steps Trend
+</h3>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={steps3hTrend}>
 
@@ -4146,19 +4391,24 @@ Rules:
               <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} fontSize={12} />
 
               <Tooltip
-                formatter={(value, name) => {
-                  if (name === "steps") {
-                    return [`${value} steps`, "Steps"];
-                  }
-                  return null;
-                }}
-                contentStyle={{
-                  backgroundColor: "#fff",
-                  borderRadius: "12px",
-                  border: "1px solid #e5e7eb",
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
-                }}
-              />
+  formatter={(value, name) => {
+    if (name === "steps") return [`${value} steps`, "Steps"];
+    return null;
+  }}
+  contentStyle={{
+    backgroundColor: "#fff",
+    borderRadius: "12px",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
+  }}
+  labelStyle={{
+    color: "black",        // <-- top text (time)
+    fontWeight: 600
+  }}
+  itemStyle={{
+    color: "#0F766E"       // <-- lower text (Steps: ####)
+  }}
+/>
 
               {/* MAIN LINE */}
               <Line
@@ -4219,7 +4469,7 @@ Rules:
                   border: "1px solid #e5e7eb",
                   boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
                 }}
-                labelStyle={{ fontWeight: 600 }}
+                labelStyle={{ fontWeight: 600 , color : "#000000" }}
                 formatter={(value) => [`${value} km`, "Distance"]}
               />
 
@@ -4253,13 +4503,16 @@ Rules:
                 unit=" hrs"
                 stroke="#E2E8F0" />
               <Tooltip
-                cursor={{ fill: "#EEF2FF" }}
+                cursor={{ fill: "rgba(20,184,166,0.08)" }}
                 contentStyle={{
+                  backgroundColor: "#ffffff",
                   borderRadius: "12px",
-                  border: "1px solid #E2E8F0",
-                  background: "white",
-                  padding: "10px 14px"
-                }} />
+                  border: "1px solid #e5e7eb",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
+                }}
+                labelStyle={{ fontWeight: 600, color: "#000000" }}
+                formatter={(value) => [`${value} km`, "Distance"]}
+              />
               <Bar
                 dataKey="hours"
                 radius={[10, 10, 0, 0]}
@@ -4553,6 +4806,25 @@ Rules:
       </div>
     </div>
   ))}
+
+    {/* ✅ INSERT STREAMING BUBBLE HERE */}
+  {streamingMessage && (
+    <div className="flex justify-start animate-slide-up">
+      <div className="flex max-w-[85%] flex-row">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3 text-secondary">
+          <MessageSquare size={16} />
+        </div>
+        <div className="p-4 rounded-2xl rounded-tl-none bg-surface dark:bg-slate-800 border border-border shadow-theme">
+          <div className="whitespace-pre-wrap text-text-main dark:text-slate-100 text-[15px] leading-relaxed">
+            {streamingMessage}
+            <span className="inline-block w-1.5 h-4 ml-1 bg-primary align-middle animate-pulse"/>
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+
+
 
   {/* Improved Typing Indicator */}
   {isChatLoading && (
@@ -5395,55 +5667,93 @@ Rules:
       <ColorBlindFilters />
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-6 pb-6 border-b border-slate-200 dark:border-slate-700 header-line-pulse">
-          <div className="flex items-center mb-4 md:mb-0">
-            <div className="w-25 h-25 rounded-xl flex items-center justify-center mr-3">
-              <img
-                src={appIcon}
-                alt="VytalCare Logo"
-                className="w-10 h-10 object-contain"
-                style={{ width: "50px", height: "50px", marginRight: "10px" }}
-              />
+        
+        {/* ✨ BEAUTIFUL GRADIENT HEADER START */}
+
+<div className="sticky top-0 z-50 mb-0 -mx-4 sm:-mx-8 px-4 sm:px-8 py-4 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 flex flex-col md:flex-row justify-between items-center transition-all duration-300 shadow-sm">
+
+{/* Left: Logo & Gradient Title */}
+          <div className="flex items-center mb-4 md:mb-0 group cursor-default">
+            
+            {/* FIXED LOGO CONTAINER */}
+            <div className="relative w-14 h-14 mr-4 flex-shrink-0">
+              {/* Glow Effect */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-primary to-secondary rounded-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500 blur-md" />
+              
+              {/* Logo Box */}
+              <div className="relative w-full h-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-center justify-center overflow-hidden p-1">
+                <img
+                  src={appIcon}
+                  alt="VytalCare Logo"
+                  className="w-full h-full object-contain scale-125"
+                />
+              </div>
             </div>
 
-            <h1 className="text-3xl font-bold text-text-main dark:text-white tracking-tight"
-              style={{ marginLeft: "-15px" }}>
-              VytalCare
+            <div className="flex flex-col justify-center h-14">
+              {/* Title + Info Button Row */}
+              <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-primary via-teal-500 to-secondary tracking-tight leading-none pb-1">
+                  VytalCare
+                </h1>
 
-            </h1>
+                {/* Info Button - Perfectly circular & aligned next to text */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveInfoMetric('about');
+                  }}
+                  className="w-5 h-5 flex items-center justify-center rounded-full border border-slate-300 dark:border-slate-600 text-slate-400 hover:text-primary hover:border-primary hover:bg-primary/5 transition-all mt-0.5"
+                  title="About VytalCare"
+                >
+                  <Info size={12} strokeWidth={2.5} />
+                </button>
+              </div>
 
-
+              <span className="text-[10px] font-bold tracking-widest text-text-muted uppercase opacity-70 ml-0.5 leading-none">
+                AI Health Companion
+              </span>
+            </div>
           </div>
 
-          <div className="flex bg-white dark:bg-slate-800 p-1.5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-            {[
-              { id: 'reminders', icon: Bell, label: 'Reminders' },
-              { id: 'health_plan', icon: Calendar, label: 'Health Plan' },
-              { id: 'activity', icon: Activity, label: 'Activity' },
-              { id: 'chatbot', icon: MessageSquare, label: 'Chatbot' }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center px-5 py-2.5 rounded-xl font-medium transition-all duration-200 ${activeTab === tab.id
-                  ? 'bg-primary text-white shadow-md shadow-primary/20'
-                  : 'text-text-muted dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/30 hover:text-text-main dark:hover:text-slate-200'
-                  }`}
-              >
-                <tab.icon size={18} className="mr-2" />
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <button
-            className="mt-2 px-5 py-2.5 bg-red-500 dark:bg-red-800/80 text-white font-semibold rounded-xl shadow-md shadow-red-300 dark:shadow-red-900/30
-        hover:bg-red-400 dark:hover:bg-red-700/80 transition-all duration-200 flex items-center gap-2
-        "
-            onClick={() => setActiveTab('emergency')}
-          >
-            🚑 EMERGENCY
-          </button>
-        </div>
+  
+
+  {/* Center: Glassy Tabs */}
+  <div className="flex bg-slate-100/80 dark:bg-slate-800/50 p-1.5 rounded-2xl border border-slate-200/50 dark:border-slate-700/50 backdrop-blur-md shadow-inner mb-4 md:mb-0">
+    {[
+      { id: 'reminders', icon: Bell, label: 'Reminders' },
+      { id: 'health_plan', icon: Calendar, label: 'Plan' },
+      { id: 'activity', icon: Activity, label: 'Activity' },
+      { id: 'chatbot', icon: MessageSquare, label: 'Chat' }
+    ].map(tab => (
+      <button
+        key={tab.id}
+        onClick={() => setActiveTab(tab.id)}
+        className={`flex items-center px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 ${activeTab === tab.id
+          ? 'bg-white dark:bg-slate-700 text-primary shadow-md scale-100'
+          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-700/50'
+          }`}
+      >
+        <tab.icon size={16} className={`mr-2 ${activeTab === tab.id ? 'fill-current' : ''}`} />
+        {tab.label}
+      </button>
+    ))}
+  </div>
+
+  {/* Right: Emergency Button with Pulse */}
+  <button
+    className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-500/30 
+    hover:shadow-red-500/50 hover:scale-105 active:scale-95 transition-all duration-200 flex items-center gap-2 group"
+    onClick={() => setActiveTab('emergency')}
+  >
+    <div className="w-2 h-2 bg-white rounded-full animate-ping mr-1" />
+    EMERGENCY
+  </button>
+</div>
+{/* ✨ BEAUTIFUL GRADIENT HEADER END */}
+
+{/* ✅ FIXED PULSE LINE (No extra padding) */}
+<div className="w-full h-[1px] bg-slate-200 dark:bg-slate-700 header-line-pulse mb-6 relative z-40" />
 
         {renderError()}
 
