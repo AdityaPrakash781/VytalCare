@@ -22,7 +22,7 @@
   <p align="center">
     An intelligent preventive healthcare system that autonomously manages your wellness journey through AI-powered insights, automated workflows, and real-time health monitoring.
     <br />
-    <a href="https://vytal-care.vercel.app"><strong>View Live Demo »</strong></a>
+    <a href="https://health-navigator-copy.vercel.app/"><strong>View Live Demo »</strong></a>
     <br />
     <br />
     <a href="#-key-features">Explore Features</a>
