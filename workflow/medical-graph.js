@@ -1,5 +1,5 @@
-// /workflow/medical-graph.js
-import { StateGraph, END } from "@langchain/langgraph";
+// /workflow/medical-graph.js  (patched)
+import { StateGraph } from "@langchain/langgraph";
 import fetch from "node-fetch";
 import { QdrantClient } from "@qdrant/js-client-rest";
 import dotenv from "dotenv";
@@ -18,12 +18,12 @@ const qdrant = new QdrantClient({
    GEMINI HELPERS (REST API v1)
 ============================================================ */
 const GEMINI_MODEL = "models/gemini-2.5-flash";
-const GEMINI_URL =
-  `https://generativelanguage.googleapis.com/v1/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`;
-
+const GEMINI_URL = (key) =>
+  `https://generativelanguage.googleapis.com/v1/${GEMINI_MODEL}:generateContent?key=${key}`;
 
 async function askGemini(prompt) {
-  const response = await fetch(GEMINI_URL, {
+  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not set");
+  const response = await fetch(GEMINI_URL(process.env.GEMINI_API_KEY), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -32,33 +32,30 @@ async function askGemini(prompt) {
   });
 
   const json = await response.json();
-
-  if (json.error) {
-    throw new Error(json.error.message);
+  if (!response.ok) {
+    throw new Error(json?.error?.message || `Gemini error ${response.status}`);
   }
-
   return json?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
 async function embed(text) {
+  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not set for embeddings");
   const resp = await fetch(
     `https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: { parts: [{ text }] },
-      }),
+      body: JSON.stringify({ content: { parts: [{ text }] } }),
     }
   );
-
   const json = await resp.json();
-  return json.embedding.values;
+  if (!resp.ok) throw new Error(json?.error?.message || "Embedding failed");
+  return json.embedding?.values || [];
 }
 
 /* ============================================================
-   NODE 1 — Combined classification, triage, safety check, doctor need,
-   AND follow-up question generation
+   NODE 1 — Analyze: classification / triage / follow-up
+   (returns enriched state; errors turn into safe defaults)
 ============================================================ */
 
 async function nodeAnalyze(state) {
@@ -77,61 +74,79 @@ Respond ONLY in valid JSON:
 }
 `;
 
-  const output = await askGemini(prompt);
-
-  let parsed = {};
   try {
-    parsed = JSON.parse(output);
-  } catch (e) {
-    parsed = {
+    const output = await askGemini(prompt);
+    try {
+      const parsed = JSON.parse(output);
+      return {
+        ...state,
+        category: parsed.category || "general_question",
+        triage: parsed.triage || "low",
+        needs_doctor: Boolean(parsed.needs_doctor),
+        followup_question: parsed.followup_question || "",
+      };
+    } catch (parseErr) {
+      console.warn("Analyze: JSON parse failed, using defaults", parseErr?.message || parseErr);
+      return {
+        ...state,
+        category: "general_question",
+        triage: "low",
+        needs_doctor: false,
+        followup_question: "",
+      };
+    }
+  } catch (err) {
+    console.error("Analyze node Gemini error:", err?.message || err);
+    return {
+      ...state,
       category: "general_question",
       triage: "low",
       needs_doctor: false,
       followup_question: "",
     };
   }
-
-  return {
-    ...state,
-    category: parsed.category,
-    triage: parsed.triage,
-    needs_doctor: parsed.needs_doctor,
-    followup_question: parsed.followup_question,
-  };
 }
 
 /* ============================================================
-   NODE 2 — RAG RETRIEVAL
+   NODE 2 — Retrieve: embedding + qdrant search (best-effort)
 ============================================================ */
 
 async function nodeRetrieve(state) {
-  const vec = await embed(state.message);
+  try {
+    const vec = await embed(state.message);
+    const results = await qdrant.search("medical_knowledge", {
+      vector: vec,
+      limit: 4,
+    });
 
-  const results = await qdrant.search("medical_knowledge", {
-    vector: vec,
-    limit: 4,
-  });
-
-  const formatted = results
-    .map(
-      (r, i) => `
+    const formatted = results
+      .map(
+        (r, i) => `
 [Document ${i + 1}]
-TITLE: ${r.payload?.title}
-SUMMARY: ${r.payload?.summary}
-URL: ${r.payload?.url}
+TITLE: ${r.payload?.title || "Untitled"}
+SUMMARY: ${r.payload?.summary || "(No summary)"}
+URL: ${r.payload?.url || "No URL"}
 `
-    )
-    .join("\n");
+      )
+      .join("\n");
 
-  return {
-    ...state,
-    context: formatted,
-    sources: results.map((r) => r.payload?.url || "No URL"),
-  };
+    return {
+      ...state,
+      context: formatted,
+      sources: results.map((r) => r.payload?.url || "No URL"),
+    };
+  } catch (err) {
+    console.warn("Retrieve node failed (embedding/Qdrant):", err?.message || err);
+    return {
+      ...state,
+      context: "No retrieved medical documents.",
+      sources: [],
+    };
+  }
 }
 
 /* ============================================================
-   NODE 3 — FINAL ANSWER
+   NODE 3 — Final: build safe answer using context and triage
 ============================================================ */
 
 async function nodeFinal(state) {
@@ -166,16 +181,17 @@ ANSWER:
 (text here)
 `;
 
-  const answer = await askGemini(finalPrompt);
-
-  return {
-    ...state,
-    answer,
-  };
+  try {
+    const answer = await askGemini(finalPrompt);
+    return { ...state, answer: answer || "Sorry, I couldn't generate an answer." };
+  } catch (err) {
+    console.error("Final node Gemini error:", err?.message || err);
+    return { ...state, answer: "Sorry, I couldn't generate an answer." };
+  }
 }
 
 /* ============================================================
-   BUILD GRAPH (FAST MODE — ONLY 2 GEMINI CALLS)
+   BUILD GRAPH (3 nodes)
 ============================================================ */
 
 const graph = new StateGraph({
@@ -191,15 +207,16 @@ const graph = new StateGraph({
   },
 });
 
-// Node names MUST match here
 graph.addNode("analyze", nodeAnalyze);
 graph.addNode("retrieve", nodeRetrieve);
 graph.addNode("final", nodeFinal);
 
-// Graph flow
-graph.addEdge("__start__", "analyze");
+// define flow: analyze -> retrieve -> final
 graph.addEdge("analyze", "retrieve");
 graph.addEdge("retrieve", "final");
-graph.addEdge("final", END);
 
+// set the entry point
+graph.setEntryPoint("analyze");
+
+// compile and export
 export default graph.compile();
