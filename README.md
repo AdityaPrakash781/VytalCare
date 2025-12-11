@@ -1,4 +1,4 @@
-<div align="center">
+<img width="1305" height="317" alt="image" src="https://github.com/user-attachments/assets/e5b3f024-17e7-4b3f-81d8-d6048c10de2a" /><div align="center">
   <img src="src/assets/iconn.png" alt="VytalCare Logo" width="120" height="120" />
   <h1 align="center">VytalCare</h1>
   <strong>The Agentic AI Health Companion</strong>
@@ -445,8 +445,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 **Developers**: Aditya Prakash ( adiprakash35@gmail.com ) , Ananya Raghuveer , Shashank Ravindra , Swaraag Hebbar N.
 **Email**: [Create an issue](https://github.com/AdityaPrakash781/VytalCare/issues) for support  
-**Live Demo:** [vytal-care.vercel.app](https://health-navigator-copy-hqt79ajqc.vercel.app/)
+## 🚀 Deployment
+[![Vercel Status](https://vercelbadge.vercel.app/api/AdityaPrakash781/health-navigator-copy)](https://health-navigator-copy.vercel.app/)
 
+## 🔗 Live Demo
+👉 https://health-navigator-copy.vercel.app/
 ---
 
 <div align="center">
