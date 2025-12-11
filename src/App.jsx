@@ -2438,7 +2438,7 @@ CRITICAL: Create tables using proper markdown format with | characters only.
 DO NOT use --- separator lines in tables. 
 Table structure must be: | Header1 | Header2 | Header3 | followed by | row1 | data | data |
 Keep tables compact and aligned properly. Focus on key improvements and trends.`;
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+   const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
     const payload = {
       contents: [{ parts: [{ text: prompt }] }],
@@ -2891,7 +2891,8 @@ RULES:
       });
 
       // 2. Build Gemini request
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
 
       const prompt = `
 You are reading a doctor's prescription image.
