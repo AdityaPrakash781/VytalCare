@@ -2518,32 +2518,49 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
         let modelText = "";
         let modelSources = [];
 
+        // FIND THE "BRANCH A" BLOCK AND REPLACE IT WITH THIS:
+
         // ============================================================
-        // BRANCH A — IMAGE MESSAGE → NON-RAG GEMINI IMAGE CALL
+        // BRANCH A — IMAGE MESSAGE → GEMINI MULTIPART UPLOAD
         // ============================================================
         if (imageInlineData) {
-          console.log("🖼️ Image detected → Direct Gemini Vision API");
+          console.log("🖼️ Image detected → Direct Gemini Vision API (Multipart Upload)");
+
+          // 1. Upload the file to Gemini File API
+          const formData = new FormData();
+          formData.append("file", imageInlineData.file); // Use the file we passed
+
+          const uploadResponse = await fetch(
+            `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GEMINI_API_KEY}`,
+            {
+              method: "POST",
+              body: formData
+            }
+          );
+          
+          const uploadResult = await uploadResponse.json();
+          if (!uploadResult.file || !uploadResult.file.uri) {
+            throw new Error("Gemini file upload failed: " + (uploadResult.error?.message || "Unknown error"));
+          }
+          
+          const fileUri = uploadResult.file.uri;
+          console.log("File uploaded successfully:", fileUri);
+
+          // 2. Generate Content using the File URI
+          // We use v1beta and gemini-2.5-flash (your app's standard)
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
           const systemInstruction = {
-            parts: [
-              {
-                text: `
-You are a helpful medical AI analyzing user-uploaded images.
-
+            parts: [{
+              text: `You are a helpful medical AI analyzing user-uploaded images.
 RULES:
 - Describe what you SEE, in simple language.
 - Give 2–3 possible explanations.
 - DO NOT DIAGNOSE.
 - DO NOT prescribe medications.
-- ALWAYS say: "This is AI-based visual analysis, not a diagnosis."
-- Recommend doctor visit if signs of infection, injury, or urgent symptoms.
-`
-              }
-            ]
+- ALWAYS say: "This is AI-based visual analysis, not a diagnosis."`
+            }]
           };
-
-          // ALWAYS USE REST API v1 (NOT v1beta)
-          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
           const payload = {
             contents: [
@@ -2551,7 +2568,7 @@ RULES:
                 role: "user",
                 parts: [
                   { text: newMessage },
-                  { inlineData: imageInlineData }
+                  { file_data: { mime_type: imageInlineData.mimeType, file_uri: fileUri } }
                 ]
               }
             ],
@@ -4868,6 +4885,7 @@ Rules:
                 const imageInlineData = {
                   data: base64,
                   mimeType: imageFile.type || "image/jpeg",
+                  file: imageFile // 👈 We attach the raw file object here
                 };
                 callChatbotAPI(messageToSend, imageInlineData);
               };
