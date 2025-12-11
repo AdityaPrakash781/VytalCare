@@ -2518,45 +2518,7 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
         let modelText = "";
         let modelSources = [];
 
-         /** ---------------------------------------
- * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE + IMAGE SUPPORT
- * -------------------------------------- */
-  const callChatbotAPI = useCallback(
-    async (newMessage, imageInlineData = null) => {
-      // ============================================================
-      // 1. SETUP & LOADING STATE
-      // ============================================================
-      setIsChatLoading(true);
-
-      // Failsafe: Force stop loading after 20s
-      setTimeout(() => setIsChatLoading(false), 20000);
-
-      // ============================================================
-      // 2. SAVE USER MESSAGE TO FIRESTORE
-      // ============================================================
-      const userMessage = {
-        role: "user",
-        text: newMessage,
-        sources: [],
-        createdAt: Date.now()
-      };
-
-      if (db && userId) {
-        try {
-          const chatCollectionRef = collection(
-            db,
-            `/artifacts/${appId}/users/${userId}/chats`
-          );
-          await addDoc(chatCollectionRef, userMessage);
-        } catch (e) {
-          console.error("Error saving user message:", e);
-        }
-      }
-
-      try {
-        let modelText = "";
-        let modelSources = [];
-
+ 
         // FIND THE "BRANCH A" BLOCK AND REPLACE IT WITH THIS:
 
         // ============================================================
