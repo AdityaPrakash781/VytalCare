@@ -2543,7 +2543,7 @@ RULES:
           };
 
           // ALWAYS USE REST API v1 (NOT v1beta)
-          const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
           const payload = {
             contents: [
