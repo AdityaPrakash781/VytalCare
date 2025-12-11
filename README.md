@@ -10,6 +10,13 @@
   <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/AI-Gemini%202.5-4285F4?logo=google&logoColor=white" /></a>
   <a href="https://n8n.io/"><img src="https://img.shields.io/badge/Automation-n8n-EA4AAA?logo=n8n&logoColor=white" /></a>
   <a href="https://langgraph.dev/"><img src="https://img.shields.io/badge/LangGraph-1.0-7B61FF?logo=langchain&logoColor=white" alt="LangGraph" /></a>
+  <a href="https://developers.google.com/fit">
+  <img src="https://img.shields.io/badge/Google%20Fit-API-FF3D00?logo=google-fit&logoColor=white" alt="Google Fit API" />
+</a>
+
+<a href="https://qdrant.tech/">
+  <img src="https://img.shields.io/badge/Qdrant-Vector%20DB-FF4D8D?logo=qdrant&logoColor=white" alt="Qdrant" />
+</a>
   <br />
   <br />
   <p align="center">
