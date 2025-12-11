@@ -445,7 +445,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 **Developers**: Aditya Prakash ( adiprakash35@gmail.com ) , Ananya Raghuveer , Shashank Ravindra , Swaraag Hebbar N.
 **Email**: [Create an issue](https://github.com/AdityaPrakash781/VytalCare/issues) for support  
-**Live Demo**: [vytal-care.vercel.app]([https://vytal-care.vercel.app](https://health-navigator-copy-hqt79ajqc.vercel.app/))
+**Live Demo:** [vytal-care.vercel.app](https://health-navigator-copy-hqt79ajqc.vercel.app/)
 
 ---
 
