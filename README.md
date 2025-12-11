@@ -9,6 +9,7 @@
   <a href="https://firebase.google.com/"><img src="https://img.shields.io/badge/Firebase-Firestore-FFCA28?logo=firebase&logoColor=black" /></a>
   <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/AI-Gemini%202.5-4285F4?logo=google&logoColor=white" /></a>
   <a href="https://n8n.io/"><img src="https://img.shields.io/badge/Automation-n8n-EA4AAA?logo=n8n&logoColor=white" /></a>
+  <a href="https://langgraph.dev/"><img src="https://img.shields.io/badge/LangGraph-1.0-7B61FF?logo=langchain&logoColor=white" alt="LangGraph" /></a>
   <br />
   <br />
   <p align="center">
