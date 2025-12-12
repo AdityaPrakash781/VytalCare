@@ -33,6 +33,16 @@
   </p>
 </div>
 
+<div align="center">
+  <h3>📺 Project Walkthrough</h3>
+  <p>
+    Access the complete video walkthrough, presentation resources, and documentation:
+    <br />
+    <a href="https://drive.google.com/drive/folders/1uZ3oH_XjUPhUSGawOVbjC3lZLXev7oA5">
+      <img src="https://img.shields.io/badge/Google_Drive-Project_Walkthrough_&_Resources-4285F4?style=for-the-badge&logo=google-drive&logoColor=white" alt="Drive Link" />
+    </a>
+  </p>
+</div>
 ---
 
 ## 🚀 Key Features
