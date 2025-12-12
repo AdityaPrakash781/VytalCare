@@ -283,7 +283,7 @@ VytalCare/
 │   │
 │   ├── App.css
 │   ├── App.jsx                   # Root UI file
-│   ├── app2.jsx                  # (extra file in your screenshot)
+│   ├── app2.jsx                  # (extra file)
 │   ├── index.css
 │   └── main.jsx                  # React DOM entry point
 │
