@@ -695,7 +695,7 @@ const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, se
              text-red-600 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-800 
              hover:bg-red-100 dark:hover:bg-red-900/40 transition-all text-sm font-medium"
       >
-        Sign Out of VytalCare
+        Sign Out of VytalCare !
       </button>
 
     </div>
