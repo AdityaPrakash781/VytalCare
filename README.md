@@ -237,37 +237,70 @@ The optimized production build will be created in the `dist/` directory.
 
 ```
 VytalCare/
-├── api/                    # Serverless API endpoints (optional Vercel functions)
-├── ingest/                 # Data ingestion scripts for health metrics
-├── public/                 # Static assets (favicon, manifest)
-├── src/
-│   ├── assets/            # Images, icons, and static resources
-│   │   └── iconn.png      # VytalCare logo
-│   ├── components/        # React components
-│   │   ├── Dashboard.jsx  # Main health metrics dashboard
-│   │   ├── MedicationCard.jsx # Medication management UI
-│   │   ├── ChatBot.jsx    # AI chat interface
-│   │   ├── ActivityCharts.jsx # Recharts visualizations
-│   │   └── ProfileSetup.jsx   # User onboarding
-│   ├── services/          # API service layers
-│   │   ├── firebaseService.js # Firestore operations
-│   │   ├── googleFitService.js # Google Fit API calls
-│   │   └── geminiService.js   # Gemini AI integration
-│   ├── utils/             # Helper functions
-│   │   ├── healthScore.js # Health score calculation engine
-│   │   └── dateUtils.js   # Date formatting and bucketing
-│   ├── contexts/          # React Context providers
-│   │   └── AuthContext.jsx # Authentication state
-│   ├── App.jsx            # Root component with routing
-│   └── main.jsx           # Application entry point
-├── workflow/              # n8n workflow JSON exports
-├── .env                   # Environment variables (not in repo)
-├── .gitignore            # Git ignore rules
-├── index.html            # HTML entry point
-├── package.json          # NPM dependencies and scripts
-├── tailwind.config.js    # Tailwind CSS configuration
-├── vite.config.js        # Vite build configuration
-└── vercel.json           # Vercel deployment config
+├── api/                          # Serverless API endpoints (Vercel functions)
+│   └── chat-rag.js               # RAG chatbot backend endpoint
+│
+├── ingest/                       # Data ingestion + preprocessing scripts
+│   ├── chunk_text.js
+│   ├── code_mappings.js
+│   ├── create_collection.js
+│   ├── embed_and_upload.js
+│   ├── fetch_medlineplus_connect.js
+│   ├── medical_lists.js
+│   ├── retrieve_context.js
+│   ├── run_ingestion.js
+│   ├── scrape_articles.js
+│   └── test_retrieval.js
+│
+├── public/                       # Static public files (served as-is)
+│   └── vite.svg
+│
+├── src/                          # Application source code
+│   ├── assets/                   # Images, icons, and static media
+│   │   ├── iconn.png
+│   │   ├── iconn.webp
+│   │   ├── react.svg
+│   │   └── ...other assets
+│   │
+│   ├── components/               # React UI components
+│   │   ├── Dashboard.jsx
+│   │   ├── MedicationCard.jsx
+│   │   ├── ChatBot.jsx
+│   │   ├── ActivityCharts.jsx
+│   │   └── ProfileSetup.jsx
+│   │
+│   ├── services/                 # API interaction / backend wrappers
+│   │   ├── firebaseService.js
+│   │   ├── googleFitService.js
+│   │   └── geminiService.js
+│   │
+│   ├── utils/                    # Utility/helper functions
+│   │   ├── healthScore.js
+│   │   └── dateUtils.js
+│   │
+│   ├── contexts/                 # Global React contexts
+│   │   └── AuthContext.jsx
+│   │
+│   ├── App.css
+│   ├── App.jsx                   # Root UI file
+│   ├── app2.jsx                  # (extra file in your screenshot)
+│   ├── index.css
+│   └── main.jsx                  # React DOM entry point
+│
+├── workflow/                     # LangGraph / n8n workflow files
+│   └── ...workflow JSON configs
+│
+├── index.html                    # HTML entry point for Vite
+├── package.json                  # Dependencies + scripts
+├── package-lock.json
+├── postcss.config.js
+├── tailwind.config.js
+├── tree.txt
+├── vercel.json                   # Vercel deployment config
+├── vite.config.js                # Vite build configuration
+├── .gitignore
+└── README.md
+
 ```
 
 ---
