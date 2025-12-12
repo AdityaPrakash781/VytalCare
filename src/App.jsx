@@ -7,7 +7,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Legend, Area
 } from 'recharts';
-import appIcon from "./assets/iconn.png";
+import appIcon from "./assets/Finalicon.png";
 
 
 
