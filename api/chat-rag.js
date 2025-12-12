@@ -216,7 +216,17 @@ Rules:
 - Never provide diagnosis; provide educational info and advise to consult a professional.
 Format:
 ANSWER:
-(Your answer)
+(plain-language explanation)
+
+WHAT YOU CAN DO:
+- bullet points
+
+WHEN TO SEE A DOCTOR:
+- bullet points
+
+DISCLAIMER:
+This is general information, not a medical diagnosis.
+
 SOURCES:
 - include urls
 `;
