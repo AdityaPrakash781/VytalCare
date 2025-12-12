@@ -175,6 +175,11 @@ Before you begin, ensure you have the following installed and configured:
    
    # n8n Webhook (Optional)
    VITE_N8N_WEBHOOK_URL=https://your-n8n-instance.hf.space/webhook/new-medication
+
+   # Qdrant Vector Database (for RAG chatbot)
+    QDRANT_URL=your_qdrant_cluster_url
+    QDRANT_API_KEY=your_qdrant_api_key
+    QDRANT_COLLECTION=medical_knowledge
    ```
 
 4. **Start the development server**
