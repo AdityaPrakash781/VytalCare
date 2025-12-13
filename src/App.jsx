@@ -8,7 +8,7 @@ import {
   BarChart, Bar, Legend, Area
 } from 'recharts';
 import appIcon from "./assets/Finalicon.png";
-
+import loginIcon from "./assets/iconn.png";
 
 
 import { Plus, X, Trash2, Calendar, Clock, MessageSquare, Bell, Send, Link, Activity, Heart, Moon, Sun, Eye, CheckCircle, AlertCircle, ChevronRight, Droplet, Minus, Phone, Copy, User, Edit2, Save, Ruler, Footprints, Info, Mic, MicOff, Volume2, VolumeX, Globe, Paperclip, RefreshCw, ExternalLink } from 'lucide-react';
@@ -728,7 +728,7 @@ const LoginPage = ({ handleLogin, error }) => (
     <div className="max-w-md w-full p-8 rounded-3xl shadow-xl bg-surface dark:bg-slate-900 text-center border border-slate-100 dark:border-slate-800 animate-fade-in">
       <div className="w-20 h-20 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700">
         <img
-          src={appIcon}
+          src={loginIcon}
           alt="VytalCare Logo"
           className="w-full h-full object-contain"
         />
