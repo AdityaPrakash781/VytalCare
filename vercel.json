@@ -6,7 +6,7 @@
 
   "functions": {
     "api/*.js": {
-      "runtime": "nodejs20",
+      "runtime": "@vercel/node@20",
       "memory": 1024,
       "maxDuration": 20
     }
