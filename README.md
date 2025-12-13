@@ -20,7 +20,8 @@
   <br />
   <br />
   <p align="center">
-    An intelligent preventive healthcare system that autonomously manages your wellness journey through AI-powered insights, automated workflows, and real-time health monitoring.
+    An intelligent preventive healthcare system that autonomously manages your wellness journey through AI-powered insights, automated workflows, and real-time health monitoring.<br>
+    <b>Contact To Be Added as a Test User and Try the Agentic AI<b>
     <br />
     <a href="https://health-navigator-copy.vercel.app/"><strong>View Live Demo »</strong></a>
     <br />
