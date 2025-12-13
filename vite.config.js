@@ -1,18 +1,6 @@
-{
-  "framework": "vite",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
-  "functions": {
-    "api/*.js": {
-      "runtime": "nodejs20.x",
-      "memory": 1024,
-      "maxDuration": 20
-    }
-  },
-
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
-}
+export default defineConfig({
+  plugins: [react()],
+})
