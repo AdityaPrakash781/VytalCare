@@ -1,4 +1,3 @@
-// /workflow/medical-graph.js  (patched)
 import { StateGraph } from "@langchain/langgraph";
 import fetch from "node-fetch";
 import { QdrantClient } from "@qdrant/js-client-rest";
@@ -39,7 +38,9 @@ async function askGemini(prompt) {
 }
 
 async function embed(text) {
-  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not set for embeddings");
+  if (!process.env.GEMINI_API_KEY)
+    throw new Error("GEMINI_API_KEY not set for embeddings");
+
   const resp = await fetch(
     `https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=${process.env.GEMINI_API_KEY}`,
     {
@@ -48,16 +49,15 @@ async function embed(text) {
       body: JSON.stringify({ content: { parts: [{ text }] } }),
     }
   );
+
   const json = await resp.json();
   if (!resp.ok) throw new Error(json?.error?.message || "Embedding failed");
   return json.embedding?.values || [];
 }
 
 /* ============================================================
-   NODE 1 — Analyze: classification / triage / follow-up
-   (returns enriched state; errors turn into safe defaults)
+   NODE 1 — Analyze
 ============================================================ */
-
 async function nodeAnalyze(state) {
   const prompt = `
 You are a medical pre-screening AI. Analyze the user's message and output structured JSON.
@@ -76,27 +76,15 @@ Respond ONLY in valid JSON:
 
   try {
     const output = await askGemini(prompt);
-    try {
-      const parsed = JSON.parse(output);
-      return {
-        ...state,
-        category: parsed.category || "general_question",
-        triage: parsed.triage || "low",
-        needs_doctor: Boolean(parsed.needs_doctor),
-        followup_question: parsed.followup_question || "",
-      };
-    } catch (parseErr) {
-      console.warn("Analyze: JSON parse failed, using defaults", parseErr?.message || parseErr);
-      return {
-        ...state,
-        category: "general_question",
-        triage: "low",
-        needs_doctor: false,
-        followup_question: "",
-      };
-    }
-  } catch (err) {
-    console.error("Analyze node Gemini error:", err?.message || err);
+    const parsed = JSON.parse(output);
+    return {
+      ...state,
+      category: parsed.category || "general_question",
+      triage: parsed.triage || "low",
+      needs_doctor: Boolean(parsed.needs_doctor),
+      followup_question: parsed.followup_question || "",
+    };
+  } catch {
     return {
       ...state,
       category: "general_question",
@@ -108,9 +96,8 @@ Respond ONLY in valid JSON:
 }
 
 /* ============================================================
-   NODE 2 — Retrieve: embedding + qdrant search (best-effort)
+   NODE 2 — Retrieve
 ============================================================ */
-
 async function nodeRetrieve(state) {
   try {
     const vec = await embed(state.message);
@@ -119,7 +106,7 @@ async function nodeRetrieve(state) {
       limit: 4,
     });
 
-    const formatted = results
+    const context = results
       .map(
         (r, i) => `
 [Document ${i + 1}]
@@ -130,70 +117,42 @@ URL: ${r.payload?.url || "No URL"}
       )
       .join("\n");
 
-    return {
-      ...state,
-      context: formatted,
-      sources: results.map((r) => r.payload?.url || "No URL"),
-    };
-  } catch (err) {
-    console.warn("Retrieve node failed (embedding/Qdrant):", err?.message || err);
-    return {
-      ...state,
-      context: "No retrieved medical documents.",
-      sources: [],
-    };
+    return { ...state, context };
+  } catch {
+    return { ...state, context: "" };
   }
 }
 
 /* ============================================================
-   NODE 3 — Final: build safe answer using context and triage
+   NODE 3 — Final Answer
 ============================================================ */
-
 async function nodeFinal(state) {
-  const finalPrompt = `
-You are VytalCare Medical Assistant.
+  const prompt = `
+You are a medical assistant using trusted medical sources.
 
 USER QUESTION:
 ${state.message}
 
-TRIAGE LEVEL:
-${state.triage}
+CONTEXT:
+${state.context || "No context available"}
 
-FOLLOW-UP QUESTION:
-${state.followup_question}
-
-NEEDS DOCTOR:
-${state.needs_doctor}
-
-RETRIEVED MEDICAL CONTEXT:
-${state.context}
-
-Write a clear, safe medical answer that:
-- Uses the context
-- Provides correct info
-- Does NOT diagnose
-- Does NOT prescribe medication
-- Adds this disclaimer at the end:
-"This is general information, not a medical diagnosis. Consult a healthcare professional for personal advice."
-
-FORMAT:
-ANSWER:
-(text here)
+Give a clear, accurate, and concise medical response.
 `;
 
   try {
-    const answer = await askGemini(finalPrompt);
-    return { ...state, answer: answer || "Sorry, I couldn't generate an answer." };
-  } catch (err) {
-    console.error("Final node Gemini error:", err?.message || err);
-    return { ...state, answer: "Sorry, I couldn't generate an answer." };
+    const answer = await askGemini(prompt);
+    return { ...state, answer };
+  } catch {
+    return {
+      ...state,
+      answer: "Sorry, I couldn’t generate a response right now.",
+    };
   }
 }
 
 /* ============================================================
-   BUILD GRAPH (3 nodes)
+   LANGGRAPH DEFINITION
 ============================================================ */
-
 const graph = new StateGraph({
   channels: {
     message: "string",
@@ -202,7 +161,6 @@ const graph = new StateGraph({
     needs_doctor: "boolean",
     followup_question: "string",
     context: "string",
-    sources: "array",
     answer: "string",
   },
 });
@@ -211,12 +169,12 @@ graph.addNode("analyze", nodeAnalyze);
 graph.addNode("retrieve", nodeRetrieve);
 graph.addNode("final", nodeFinal);
 
-// define flow: analyze -> retrieve -> final
+/* ============================================================
+   ✅ FIX — GRAPH EDGES + COMPILE
+============================================================ */
+graph.addEdge("__start__", "analyze");
 graph.addEdge("analyze", "retrieve");
 graph.addEdge("retrieve", "final");
+graph.addEdge("final", "__end__");
 
-// set the entry point
-graph.setEntryPoint("analyze");
-
-// compile and export
 export default graph.compile();
