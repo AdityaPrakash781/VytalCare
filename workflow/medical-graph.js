@@ -128,15 +128,43 @@ URL: ${r.payload?.url || "No URL"}
 ============================================================ */
 async function nodeFinal(state) {
   const prompt = `
-You are a medical assistant using trusted medical sources.
+You are VytalCare Medical Assistant.
 
 USER QUESTION:
 ${state.message}
 
-CONTEXT:
+TRIAGE LEVEL:
+${state.triage}
+
+FOLLOW-UP QUESTION:
+${state.followup_question}
+
+NEEDS DOCTOR:
+${state.needs_doctor}
+
+RETRIEVED MEDICAL CONTEXT:
 ${state.context || "No context available"}
 
-Give a clear, accurate, and concise medical response.
+Write a clear, safe medical answer that:
+- Uses the context
+- Provides correct info
+- Does NOT diagnose
+- Does NOT prescribe medication
+
+FORMAT:
+ANSWER:
+(clear explanation in simple language)
+
+WHAT YOU CAN DO:
+- practical steps
+- home care advice
+
+WHEN TO SEE A DOCTOR:
+- warning signs
+- emergency symptoms
+
+DISCLAIMER:
+This is general information, not a medical diagnosis.
 `;
 
   try {
