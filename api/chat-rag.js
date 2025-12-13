@@ -227,9 +227,6 @@ WHEN TO SEE A DOCTOR:
 
 DISCLAIMER:
 This is general information, not a medical diagnosis.
-
-SOURCES:
-- include urls
 `;
 
     const finalPrompt = `
