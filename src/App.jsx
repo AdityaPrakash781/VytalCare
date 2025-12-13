@@ -4839,6 +4839,34 @@ Rules:
                                {sections.DISCLAIMER}
                              </p>
                           )}
+
+                          {/* SOURCES BLOCK */}
+                          {Array.isArray(msg.sources) && msg.sources.length > 0 && (
+                            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/40">
+                              <p className="text-xs font-semibold text-text-muted dark:text-slate-400 mb-2 flex items-center gap-2">
+                                <Link size={14} />
+                                Sources
+                              </p>
+
+                              <div className="flex flex-wrap gap-2">
+                                {msg.sources.map((src, i) => (
+                                  <a
+                                    key={i}
+                                    href={src}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full
+                                               bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 
+                                               border border-slate-200 dark:border-slate-600
+                                               text-xs text-primary transition shadow-sm"
+                                  >
+                                    Source {i + 1}
+                                    <ExternalLink size={12} />
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     } else {
