@@ -1,7 +1,7 @@
 {
   "framework": "vite",
-  "outputDirectory": "dist",
   "buildCommand": "npm run build",
+  "outputDirectory": "dist",
 
   "functions": {
     "api/*.js": {
@@ -11,8 +11,8 @@
     }
   },
 
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
