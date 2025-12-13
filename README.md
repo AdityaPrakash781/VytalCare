@@ -465,7 +465,7 @@ npm run preview
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+Check the LICENSE.md File for details.
 
 ---
 
