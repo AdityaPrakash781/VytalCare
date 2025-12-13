@@ -843,10 +843,14 @@ const METRIC_INFO = {
 };
 
 const parseAssistantResponse = (text = "") => {
+  // Remove "SOURCES: ..." or "Sources:" and everything after it to prevent double rendering
+  // The sources are already passed separately in msg.sources by the backend
+  const cleanText = text.replace(/SOURCES?:[\s\S]*/gi, "").trim();
+  
   const sections = {};
-  const regex = /(ANSWER|WHAT YOU CAN DO|WHEN TO SEE A DOCTOR|DISCLAIMER|SOURCES):([\s\S]*?)(?=\n[A-Z ]+:\n|$)/g;
+  const regex = /(ANSWER|WHAT YOU CAN DO|WHEN TO SEE A DOCTOR|DISCLAIMER):([\s\S]*?)(?=\n[A-Z ]+:\n|$)/g;
   let match;
-  while ((match = regex.exec(text)) !== null) {
+  while ((match = regex.exec(cleanText)) !== null) {
     sections[match[1]] = match[2].trim();
   }
   return sections;
@@ -4839,6 +4843,34 @@ Rules:
                                {sections.DISCLAIMER}
                              </p>
                           )}
+
+                          {/* SOURCES BLOCK */}
+                          {Array.isArray(msg.sources) && msg.sources.length > 0 && (
+                            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/40">
+                              <p className="text-xs font-semibold text-text-muted dark:text-slate-400 mb-2 flex items-center gap-2">
+                                <Link size={14} />
+                                Sources
+                              </p>
+
+                              <div className="flex flex-wrap gap-2">
+                                {msg.sources.map((src, i) => (
+                                  <a
+                                    key={i}
+                                    href={src}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full
+                                               bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 
+                                               border border-slate-200 dark:border-slate-600
+                                               text-xs text-primary transition shadow-sm"
+                                  >
+                                    Source {i + 1}
+                                    <ExternalLink size={12} />
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     } else {
@@ -4863,24 +4895,6 @@ Rules:
                       );
                     }
                   })()}
-
-                  {/* Sources */}
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-xs text-text-muted space-y-1">
-                      <div className="font-semibold text-primary">Sources</div>
-                      {msg.sources.map((src, i) => (
-                        <a
-                          key={i}
-                          href={src}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block truncate hover:underline text-blue-600 dark:text-blue-400"
-                        >
-                          {src}
-                        </a>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

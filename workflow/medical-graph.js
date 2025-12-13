@@ -117,7 +117,11 @@ URL: ${r.payload?.url || "No URL"}
       )
       .join("\n");
 
-    return { ...state, context };
+    const sources = results
+      .map((r) => r.payload?.url)
+      .filter(Boolean);
+
+    return { ...state, context, sources };
   } catch {
     return { ...state, context: "" };
   }
@@ -183,14 +187,15 @@ This is general information, not a medical diagnosis.
 ============================================================ */
 const graph = new StateGraph({
   channels: {
-    message: "string",
-    category: "string",
-    triage: "string",
-    needs_doctor: "boolean",
-    followup_question: "string",
-    context: "string",
-    answer: "string",
-  },
+  message: "string",
+  category: "string",
+  triage: "string",
+  needs_doctor: "boolean",
+  followup_question: "string",
+  context: "string",
+  sources: "array",        // ✅ ADD THIS
+  answer: "string",
+},
 });
 
 graph.addNode("analyze", nodeAnalyze);
