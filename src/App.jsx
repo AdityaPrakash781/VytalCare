@@ -4895,24 +4895,6 @@ Rules:
                       );
                     }
                   })()}
-
-                  {/* Sources */}
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-xs text-text-muted space-y-1">
-                      <div className="font-semibold text-primary">Sources</div>
-                      {msg.sources.map((src, i) => (
-                        <a
-                          key={i}
-                          href={src}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block truncate hover:underline text-blue-600 dark:text-blue-400"
-                        >
-                          {src}
-                        </a>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
