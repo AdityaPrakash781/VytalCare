@@ -841,6 +841,20 @@ const METRIC_INFO = {
   }
 };
 
+/** ---------------------------------------
+ * Helper: Parse RAG Response
+ * -------------------------------------- */
+const parseAssistantResponse = (text = '') => {
+  const sections = {};
+  const regex = /(ANSWER|WHAT YOU CAN DO|WHEN TO SEE A DOCTOR|DISCLAIMER|SOURCES):([\s\S]*?)(?=\n[A-Z ]+:\n|$)/g;
+
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    sections[match[1]] = match[2].trim();
+  }
+
+  return sections;
+};
 
 const App = () => {
   // Firebase & core state
@@ -4776,53 +4790,74 @@ Rules:
                     : "bg-surface dark:bg-slate-800 text-text-main dark:text-slate-100 border border-border rounded-tl-none"
                     }`}
                 >
-                  {/* Message Text */}
-                  <div
-                    className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
-                    dangerouslySetInnerHTML={{
-                      __html: (() => {
-                        let html = msg.text || "";
-                        // Markdown formatting
-                        html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-                        html = html.replace(
-                          /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,
-                          "<em>$1</em>"
-                        );
-                        let listCounter = 0;
-                        html = html.replace(
-                          /^[\s]*[-•*]\s+(.*)$/gm,
-                          (match, content) => {
-                            listCounter++;
-                            return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
-                          }
-                        );
-                        return html;
-                      })(),
-                    }}
-                  />
+                 {/* Message Text */}
+{msg.role === 'assistant' ? (
+  (() => {
+    const sections = parseAssistantResponse(msg.text);
+    
+    // If we didn't find any specific sections, fall back to standard text display
+    if (!sections.ANSWER && !sections["WHAT YOU CAN DO"]) {
+       return (
+         <div 
+           className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+           dangerouslySetInnerHTML={{ __html: msg.text }} 
+         />
+       );
+    }
 
-                  {/* Sources */}
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-xs text-text-muted space-y-1">
-                      <div className="font-semibold text-primary">Sources</div>
-                      {msg.sources.map((src, i) => (
-                        <a
-                          key={i}
-                          href={src}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block truncate hover:underline text-blue-600 dark:text-blue-400"
-                        >
-                          {src}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
+    return (
+      <div className="space-y-4">
+        {sections.ANSWER && (
+          <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border-l-4 border-primary">
+            <p className="font-semibold mb-1 text-primary">What this means</p>
+            <p>{sections.ANSWER}</p>
+          </div>
+        )}
 
+        {sections["WHAT YOU CAN DO"] && (
+          <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+            <p className="font-semibold mb-1 text-emerald-700 dark:text-emerald-400">What you can do</p>
+            <ul className="list-disc pl-5">
+              {sections["WHAT YOU CAN DO"]
+                .split('\n')
+                .filter(Boolean)
+                .map((line, i) => (
+                  <li key={i}>{line.replace(/^[-•]\s*/, '').trim()}</li>
+                ))}
+            </ul>
+          </div>
+        )}
+
+        {sections["WHEN TO SEE A DOCTOR"] && (
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl">
+            <p className="font-semibold mb-1 text-red-700 dark:text-red-400">When to see a doctor</p>
+            <ul className="list-disc pl-5">
+              {sections["WHEN TO SEE A DOCTOR"]
+                .split('\n')
+                .filter(Boolean)
+                .map((line, i) => (
+                  <li key={i}>{line.replace(/^[-•]\s*/, '').trim()}</li>
+                ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  })()
+) : (
+  // User messages stay the same
+  <div
+    className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+    dangerouslySetInnerHTML={{
+      __html: (() => {
+        let html = msg.text || "";
+        html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
+        return html;
+      })(),
+    }}
+  />
+)}
           {/* ✅ INSERT STREAMING BUBBLE HERE */}
           {streamingMessage && (
             <div className="flex justify-start animate-slide-up">
