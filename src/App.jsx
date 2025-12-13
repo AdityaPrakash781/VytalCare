@@ -843,9 +843,9 @@ const METRIC_INFO = {
 };
 
 const parseAssistantResponse = (text = "") => {
-  // Remove "SOURCES: ..." and everything after it to prevent double rendering
+  // Remove "SOURCES: ..." or "Sources:" and everything after it to prevent double rendering
   // The sources are already passed separately in msg.sources by the backend
-  const cleanText = text.replace(/SOURCES:[\s\S]*$/i, "").trim();
+  const cleanText = text.replace(/SOURCES?:[\s\S]*/gi, "").trim();
   
   const sections = {};
   const regex = /(ANSWER|WHAT YOU CAN DO|WHEN TO SEE A DOCTOR|DISCLAIMER):([\s\S]*?)(?=\n[A-Z ]+:\n|$)/g;
