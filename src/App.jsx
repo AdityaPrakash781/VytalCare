@@ -842,6 +842,17 @@ const METRIC_INFO = {
   }
 };
 
+const parseAssistantResponse = (text = "") => {
+  const sections = {};
+  const regex = /(ANSWER|WHAT YOU CAN DO|WHEN TO SEE A DOCTOR|DISCLAIMER|SOURCES):([\s\S]*?)(?=\n[A-Z ]+:\n|$)/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    sections[match[1]] = match[2].trim();
+  }
+  return sections;
+};
+
+// ... const App = () => {
 
 const App = () => {
   // Firebase & core state
@@ -4777,30 +4788,81 @@ Rules:
                     : "bg-surface dark:bg-slate-800 text-text-main dark:text-slate-100 border border-border rounded-tl-none"
                     }`}
                 >
-                  {/* Message Text */}
-                  <div
-                    className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
-                    dangerouslySetInnerHTML={{
-                      __html: (() => {
-                        let html = msg.text || "";
-                        // Markdown formatting
-                        html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-                        html = html.replace(
-                          /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g,
-                          "<em>$1</em>"
-                        );
-                        let listCounter = 0;
-                        html = html.replace(
-                          /^[\s]*[-•*]\s+(.*)$/gm,
-                          (match, content) => {
-                            listCounter++;
-                            return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
-                          }
-                        );
-                        return html;
-                      })(),
-                    }}
-                  />
+                {/* Message Text - STRUCTURED MEDICAL RESPONSE */}
+                  {(() => {
+                    // 1. Try to parse sections
+                    const sections = msg.role !== 'user' ? parseAssistantResponse(msg.text) : {};
+                    const hasStructuredData = sections.ANSWER || sections["WHAT YOU CAN DO"] || sections["WHEN TO SEE A DOCTOR"];
+
+                    if (msg.role !== 'user' && hasStructuredData) {
+                      return (
+                        <div className="space-y-4 w-full">
+                          {sections.ANSWER && (
+                            <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border-l-4 border-primary">
+                              <p className="font-bold text-primary mb-2 flex items-center gap-2">
+                                <Info size={16} /> What this means
+                              </p>
+                              <div className="text-text-main dark:text-slate-200">{sections.ANSWER}</div>
+                            </div>
+                          )}
+
+                          {sections["WHAT YOU CAN DO"] && (
+                            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                              <p className="font-bold text-emerald-700 dark:text-emerald-400 mb-2 flex items-center gap-2">
+                                <CheckCircle size={16} /> What you can do
+                              </p>
+                              <ul className="list-disc pl-5 space-y-1 text-text-main dark:text-slate-200">
+                                {sections["WHAT YOU CAN DO"].split("\n").map((line, i) => {
+                                  const cleanLine = line.replace(/^[-•*]\s*/, "").trim();
+                                  return cleanLine ? <li key={i}>{cleanLine}</li> : null;
+                                })}
+                              </ul>
+                            </div>
+                          )}
+
+                          {sections["WHEN TO SEE A DOCTOR"] && (
+                            <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-900/30">
+                              <p className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
+                                <AlertCircle size={16} /> When to see a doctor
+                              </p>
+                              <ul className="list-disc pl-5 space-y-1 text-text-main dark:text-slate-200">
+                                {sections["WHEN TO SEE A DOCTOR"].split("\n").map((line, i) => {
+                                  const cleanLine = line.replace(/^[-•*]\s*/, "").trim();
+                                  return cleanLine ? <li key={i}>{cleanLine}</li> : null;
+                                })}
+                              </ul>
+                            </div>
+                          )}
+
+                          {sections.DISCLAIMER && (
+                             <p className="text-xs text-text-muted italic mt-2 border-t pt-2 border-slate-100 dark:border-slate-700">
+                               {sections.DISCLAIMER}
+                             </p>
+                          )}
+                        </div>
+                      );
+                    } else {
+                      // FALLBACK: Standard rendering for User messages or non-medical AI responses
+                      return (
+                        <div
+                          className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+                          dangerouslySetInnerHTML={{
+                            __html: (() => {
+                              let html = msg.text || "";
+                              html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+                              html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
+                              let listCounter = 0;
+                              html = html.replace(/^[\s]*[-•*]\s+(.*)$/gm, (match, content) => {
+                                listCounter++;
+                                return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
+                              });
+                              return html;
+                            })(),
+                          }}
+                        />
+                      );
+                    }
+                  })()}
 
                   {/* Sources */}
                   {msg.sources && msg.sources.length > 0 && (
