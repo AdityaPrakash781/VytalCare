@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://health-navigator-copy.vercel.app/"><img src="src/assets/Finalicon.png" alt="VytalCare Logo" width="120" height="120" /> </a>
-  <h1 align="center">VytalCare</h1>
+  <h1 align="center">VytalCare(API Limit Reached today as of 16/12/2025 for Chatbot , try that feature tomorrow)</h1>
   <strong>The Agentic AI Health Companion</strong>
   <br />
   <br />
