@@ -2655,30 +2655,59 @@ RULES:
         // BRANCH B — TEXT MESSAGE → RAG BACKEND
         // ============================================================
         else {
-          console.log("💬 Text message → RAG Backend");
+          console.log("💬 Text message → Real Streaming Started");
 
           const response = await fetch("/api/chat-rag", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               message: newMessage,
-              history: chatHistory.slice(-10),
-              image: null
+              history: chatHistory.slice(-10)
             })
           });
 
-          if (!response.ok) {
-            throw new Error(`Backend RAG error: ${response.status}`);
+          if (!response.ok) throw new Error(`Backend error: ${response.status}`);
+
+          // Initialize the reader for the stream
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let done = false;
+          let accumulatedText = "";
+
+          // Stop the "Thinking" bubble/stage as data begins arriving
+          setIsChatLoading(false); 
+          clearTimeout(stage1);
+          clearTimeout(stage2);
+
+          while (!done) {
+            const { value, done: doneReading } = await reader.read(); //
+            done = doneReading;
+            
+            if (value) {
+              // Decode the chunk and update the live streaming bubble
+              const chunk = decoder.decode(value, { stream: true });
+              accumulatedText += chunk;
+              setStreamingMessage(accumulatedText);
+            }
           }
 
-          const data = await response.json();
-          modelText =
-            data.reply ||
-            data.answer ||
-            data.text ||
-            "I couldn’t generate a response.";
+          // When the stream finishes, save the final complete message to history
+          const finalModelMessage = {
+            role: "assistant",
+            text: accumulatedText,
+            sources: [], 
+            createdAt: Date.now()
+          };
 
-          modelSources = data.sources || [];
+          if (db && userId) {
+            const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
+            await addDoc(chatCollectionRef, finalModelMessage);
+          }
+
+          if (speechEnabled || isVoiceMode) speakText(accumulatedText);
+          
+          // Clear the stream state so the permanent history bubble takes over
+          setStreamingMessage(null); 
         }
 
         // ============================================================
