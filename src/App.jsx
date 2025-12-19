@@ -2543,7 +2543,6 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
       // 1. SETUP & LOADING STATE
       // ============================================================
       setIsChatLoading(true);
-      setStreamingMessage(""); // Initialize empty bubble
 
       setThinkingStage("analyzing");
       const stage1 = setTimeout(() => setThinkingStage("searching"), 1000);
@@ -2655,59 +2654,30 @@ RULES:
         // BRANCH B — TEXT MESSAGE → RAG BACKEND
         // ============================================================
         else {
-          console.log("💬 Text message → Real Streaming Started");
+          console.log("💬 Text message → RAG Backend");
 
           const response = await fetch("/api/chat-rag", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               message: newMessage,
-              history: chatHistory.slice(-10)
+              history: chatHistory.slice(-10),
+              image: null
             })
           });
 
-          if (!response.ok) throw new Error(`Backend error: ${response.status}`);
-
-          // Initialize the reader for the stream
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let done = false;
-          let accumulatedText = "";
-
-          // Stop the "Thinking" bubble/stage as data begins arriving
-          setIsChatLoading(false); 
-          clearTimeout(stage1);
-          clearTimeout(stage2);
-
-          while (!done) {
-            const { value, done: doneReading } = await reader.read(); //
-            done = doneReading;
-            
-            if (value) {
-              // Decode the chunk and update the live streaming bubble
-              const chunk = decoder.decode(value, { stream: true });
-              accumulatedText += chunk;
-              setStreamingMessage(accumulatedText);
-            }
+          if (!response.ok) {
+            throw new Error(`Backend RAG error: ${response.status}`);
           }
 
-          // When the stream finishes, save the final complete message to history
-          const finalModelMessage = {
-            role: "assistant",
-            text: accumulatedText,
-            sources: [], 
-            createdAt: Date.now()
-          };
+          const data = await response.json();
+          modelText =
+            data.reply ||
+            data.answer ||
+            data.text ||
+            "I couldn’t generate a response.";
 
-          if (db && userId) {
-            const chatCollectionRef = collection(db, `/artifacts/${appId}/users/${userId}/chats`);
-            await addDoc(chatCollectionRef, finalModelMessage);
-          }
-
-          if (speechEnabled || isVoiceMode) speakText(accumulatedText);
-          
-          // Clear the stream state so the permanent history bubble takes over
-          setStreamingMessage(null); 
+          modelSources = data.sources || [];
         }
 
         // ============================================================
@@ -2752,7 +2722,7 @@ RULES:
         };
 
         // --- START STREAMING EFFECT ---
-       
+        setStreamingMessage(""); // Initialize empty bubble
 
         const words = modelText.split(" ");
         let index = 0;
@@ -2774,16 +2744,14 @@ RULES:
             setTimeout(() => {
               setStreamingMessage(null); // Remove streaming bubble
               saveFinalModelMessage();   // Add permanent bubble to history
-              setIsChatLoading(false);   // ADDED: Stops ThinkingBubble & streaming container
             }, 100);
           }
         }, 30);
 
       } catch (e) {
         console.error("❌ Chatbot Error:", e);
-        setIsChatLoading(false);      // Ensure ThinkingBubble stops
-        setStreamingMessage(null);    // ADDED: Clear partial stream on error
-        // ... existing error handling remains the same ...
+        // ... error handling remains the same ...
+        setIsChatLoading(false); // Ensure loading stops on error
       }
       // Remove the `finally` block or ensure it doesn't conflict with streaming
       // (Since we handle setIsChatLoading(false) manually above, you can remove the finally block
@@ -4990,26 +4958,7 @@ Rules:
 })}
 
 
-         {isChatLoading && (
-            <div className="space-y-2">
-              <ThinkingBubble stage={thinkingStage} />
-              
-              {streamingMessage && (
-                <div className="flex justify-start animate-fade-in">
-                  <div className="flex max-w-[85%] flex-row">
-                    {/* Placeholder div to maintain alignment with the avatar above */}
-                    <div className="flex-shrink-0 w-8 mr-3" />
-                    <div className="p-4 rounded-2xl bg-slate-800/70 text-slate-100 border border-slate-700 shadow-theme">
-                      <p className="text-[15px] whitespace-pre-wrap leading-relaxed">
-                        {streamingMessage}
-                        <span className="inline-block w-1.5 h-4 ml-1 bg-primary align-middle animate-pulse" />
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          {isChatLoading && <ThinkingBubble stage={thinkingStage} />}
         </div>
 
 
