@@ -123,6 +123,11 @@ const timeoutPromise = (ms, message = "timeout") => new Promise((_, rej) => setT
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Use POST" });
 
+  // ADD THESE THREE LINES:
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Transfer-Encoding", "chunked");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+
   // Basic validation
   const body = req.body || {};
   const message = body.message?.toString?.() || "";
@@ -250,7 +255,9 @@ FINAL ANSWER:
 
     // 6) Return
     const sourcesList = (searchResults || []).map(s => s.payload?.url || null).filter(Boolean);
-    return res.status(200).json({ reply: cleaned || "Sorry, I couldn't generate a response.", sources: sourcesList });
+    res.status(200);
+    res.write(cleaned || "I’m sorry, I couldn’t generate a response."); 
+    res.end(); // Important to close the stream
 
   } catch (err) {
     // final fallback: graceful message + diagnostics
