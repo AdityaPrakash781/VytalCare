@@ -324,6 +324,34 @@ const calculateAge = (dob) => {
   return age.toString();
 };
 
+const ThinkingBubble = ({ stage = "analyzing" }) => {
+  const messages = {
+    analyzing: "VytalCare is analyzing medical sources",
+    searching: "Searching MedlinePlus database",
+    reasoning: "Synthesizing guidance"
+  };
+
+  return (
+    <div className="flex justify-start animate-slide-up">
+      <div className="flex max-w-[85%] flex-row">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3 text-secondary">
+          <Heart size={16} className="animate-pulse" />
+        </div>
+        <div className="p-4 rounded-2xl rounded-tl-none bg-slate-800 text-slate-100 border border-slate-700 shadow-theme">
+          <div className="flex items-center gap-2 text-sm">
+            {messages[stage]}
+            <span className="flex gap-1">
+              <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
+              <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
+              <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ProfileSection = ({ db, userId, appId, theme, setTheme, colorBlindMode, setColorBlindMode, onCaregiverChange, onBmiChange }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showColorBlindMenu, setShowColorBlindMenu] = useState(false);
@@ -867,6 +895,8 @@ const App = () => {
   const [newMedication, setNewMedication] = useState({ name: '', dose: '', times: ['08:00'], days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] });
   const [isAdding, setIsAdding] = useState(false);
   const [editingMedId, setEditingMedId] = useState(null);
+
+  const [thinkingStage, setThinkingStage] = useState("analyzing");
 
   // Caregiver contact (used in Emergency tab)
   const [caregiverContact, setCaregiverContact] = useState({
@@ -2504,6 +2534,10 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
       // ============================================================
       setIsChatLoading(true);
 
+      setThinkingStage("analyzing");
+      const stage1 = setTimeout(() => setThinkingStage("searching"), 1000);
+      const stage2 = setTimeout(() => setThinkingStage("reasoning"), 2200);
+
       // Failsafe: Force stop loading after 20s
       setTimeout(() => setIsChatLoading(false), 20000);
 
@@ -2642,6 +2676,11 @@ RULES:
 
         // Stop the "Typing..." dots because we are about to show the stream
         setIsChatLoading(false);
+
+        // --- ADD THESE THREE LINES HERE (Around Line 1280) ---
+        clearTimeout(stage1);
+        clearTimeout(stage2);
+        setIsChatLoading(false); // This stops the ThinkingBubble
 
         // Helper function to save to DB after streaming is done
         const saveFinalModelMessage = async () => {
@@ -4919,23 +4958,7 @@ Rules:
 
 
 
-          {/* Improved Typing Indicator */}
-          {isChatLoading && (
-            <div className="flex justify-start animate-slide-up">
-              <div className="flex max-w-[85%] flex-row">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3 text-secondary">
-                  <MessageSquare size={16} />
-                </div>
-                <div className="p-4 rounded-2xl rounded-tl-none bg-surface border border-border shadow-theme">
-                  <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <div className="w-2 h-2 bg-muted rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {isChatLoading && <ThinkingBubble stage={thinkingStage} />}
         </div>
 
 
