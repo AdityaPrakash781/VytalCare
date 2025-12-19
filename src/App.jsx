@@ -124,6 +124,16 @@ const formatTime = (timeStr) => {
   return timeStr;
 };
 
+const formatTimeSeparator = (timestamp) => {
+  if (!timestamp) return "Earlier";
+  const date = new Date(timestamp);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  return isToday ? `Today · ${time}` : `${date.toLocaleDateString()} · ${time}`;
+};
+
 // Format time showing 24hr with 12hr in parentheses
 const formatTimeWithBoth = (timeStr) => {
   if (!timeStr) return { time24: '', time12: '' };
@@ -4800,162 +4810,152 @@ Rules:
           className="flex-grow overflow-y-auto space-y-6 pr-2 mb-4 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent min-h-0 animate-fade-in"
         >
           {/* Messages */}
-          {visibleMessages.map((msg, index) => (
-            <div
-              key={index}
-              className={`flex animate-slide-up ${msg.role === "user" ? "justify-end" : "justify-start"
-                }`}
-            >
-              <div
-                className={`flex max-w-[85%] ${msg.role === "user" ? "flex-row-reverse" : "flex-row"
-                  }`}
-              >
-                {/* Avatar */}
-                <div
-                  className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 shadow-theme ${msg.role === "user"
-                    ? "bg-primary text-white ml-3"
-                    : "bg-secondary/10 text-secondary mr-3"
-                    }`}
-                >
-                  {msg.role === "user" ? (
-                    <Activity size={16} />
-                  ) : (
-                    <MessageSquare size={16} />
-                  )}
-                </div>
+         {visibleMessages.map((msg, index) => {
+  const prevMsg = visibleMessages[index - 1];
+  
+  // Logic for Time Separator (> 5 mins gap)
+  const showTimeSeparator = !prevMsg || 
+    (msg.createdAt && prevMsg.createdAt && msg.createdAt - prevMsg.createdAt > 5 * 60 * 1000);
 
-                {/* Bubble */}
-                <div
-                  className={`p-4 rounded-2xl shadow-theme-lg text-[15px] leading-relaxed ${msg.role === "user"
-                    ? "bg-primary text-white rounded-tr-none"
-                    : "bg-surface dark:bg-slate-800 text-text-main dark:text-slate-100 border border-border rounded-tl-none"
-                    }`}
-                >
-                {/* Message Text - STRUCTURED MEDICAL RESPONSE */}
-                  {(() => {
-                    // 1. Try to parse sections
-                    const sections = msg.role !== 'user' ? parseAssistantResponse(msg.text) : {};
-                    const hasStructuredData = sections.ANSWER || sections["WHAT YOU CAN DO"] || sections["WHEN TO SEE A DOCTOR"];
+  // Logic for Grouping (Same sender as previous)
+  const isConsecutive = prevMsg && prevMsg.role === msg.role && !showTimeSeparator;
 
-                    if (msg.role !== 'user' && hasStructuredData) {
-                      return (
-                        <div className="space-y-4 w-full">
-                          {sections.ANSWER && (
-                            <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border-l-4 border-primary">
-                              <p className="font-bold text-primary mb-2 flex items-center gap-2">
-                                <Info size={16} /> What this means
-                              </p>
-                              <div className="text-text-main dark:text-slate-200">{sections.ANSWER}</div>
-                            </div>
-                          )}
+  return (
+    <React.Fragment key={index}>
+      {/* TIME SEPARATOR */}
+      {showTimeSeparator && (
+        <div className="my-6 flex justify-center animate-fade-in">
+          <span className="text-[10px] font-bold tracking-widest uppercase text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">
+             {formatTimeSeparator(msg.createdAt)}
+          </span>
+        </div>
+      )}
 
-                          {sections["WHAT YOU CAN DO"] && (
-                            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
-                              <p className="font-bold text-emerald-700 dark:text-emerald-400 mb-2 flex items-center gap-2">
-                                <CheckCircle size={16} /> What you can do
-                              </p>
-                              <ul className="list-disc pl-5 space-y-1 text-text-main dark:text-slate-200">
-                                {sections["WHAT YOU CAN DO"].split("\n").map((line, i) => {
-                                  const cleanLine = line.replace(/^[-•*]\s*/, "").trim();
-                                  return cleanLine ? <li key={i}>{cleanLine}</li> : null;
-                                })}
-                              </ul>
-                            </div>
-                          )}
+      <div
+        className={`flex animate-slide-up ${msg.role === "user" ? "justify-end" : "justify-start"} ${isConsecutive ? 'mt-1' : 'mt-4'}`}
+      >
+        <div
+          className={`flex max-w-[85%] ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+        >
+          {/* Avatar: Hidden if consecutive */}
+          <div
+            className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-1 shadow-theme ${msg.role === "user"
+              ? "bg-primary text-white ml-3"
+              : "bg-secondary/10 text-secondary mr-3"
+              } ${isConsecutive ? 'opacity-0' : 'opacity-100'}`}
+          >
+            {!isConsecutive && (msg.role === "user" ? (
+              <Activity size={16} />
+            ) : (
+              <MessageSquare size={16} />
+            ))}
+          </div>
 
-                          {sections["WHEN TO SEE A DOCTOR"] && (
-                            <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-900/30">
-                              <p className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
-                                <AlertCircle size={16} /> When to see a doctor
-                              </p>
-                              <ul className="list-disc pl-5 space-y-1 text-text-main dark:text-slate-200">
-                                {sections["WHEN TO SEE A DOCTOR"].split("\n").map((line, i) => {
-                                  const cleanLine = line.replace(/^[-•*]\s*/, "").trim();
-                                  return cleanLine ? <li key={i}>{cleanLine}</li> : null;
-                                })}
-                              </ul>
-                            </div>
-                          )}
+          {/* Bubble */}
+          <div
+            className={`p-4 rounded-2xl shadow-theme-lg text-[15px] leading-relaxed ${msg.role === "user"
+              ? `bg-primary text-white ${isConsecutive ? 'rounded-tr-2xl' : 'rounded-tr-none'}`
+              : `bg-surface dark:bg-slate-800 text-text-main dark:text-slate-100 border border-border ${isConsecutive ? 'rounded-tl-2xl' : 'rounded-tl-none'}`
+              }`}
+          >
+            {/* ... Keep the existing inner logic for parseAssistantResponse and standard rendering exactly as it was ... */}
+            {(() => {
+              const sections = msg.role !== 'user' ? parseAssistantResponse(msg.text) : {};
+              const hasStructuredData = sections.ANSWER || sections["WHAT YOU CAN DO"] || sections["WHEN TO SEE A DOCTOR"];
 
-                          {sections.DISCLAIMER && (
-                             <p className="text-xs text-text-muted italic mt-2 border-t pt-2 border-slate-100 dark:border-slate-700">
-                               {sections.DISCLAIMER}
-                             </p>
-                          )}
-
-                          {/* SOURCES BLOCK */}
-                          {Array.isArray(msg.sources) && msg.sources.length > 0 && (
-                            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/40">
-                              <p className="text-xs font-semibold text-text-muted dark:text-slate-400 mb-2 flex items-center gap-2">
-                                <Link size={14} />
-                                Sources
-                              </p>
-
-                              <div className="flex flex-wrap gap-2">
-                                {msg.sources.map((src, i) => (
-                                  <a
-                                    key={i}
-                                    href={src}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full
-                                               bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 
-                                               border border-slate-200 dark:border-slate-600
-                                               text-xs text-primary transition shadow-sm"
-                                  >
-                                    Source {i + 1}
-                                    <ExternalLink size={12} />
-                                  </a>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+              if (msg.role !== 'user' && hasStructuredData) {
+                return (
+                  <div className="space-y-4 w-full">
+                    {sections.ANSWER && (
+                      <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border-l-4 border-primary">
+                        <p className="font-bold text-primary mb-2 flex items-center gap-2">
+                          <Info size={16} /> What this means
+                        </p>
+                        <div className="text-text-main dark:text-slate-200">{sections.ANSWER}</div>
+                      </div>
+                    )}
+                    {sections["WHAT YOU CAN DO"] && (
+                      <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                        <p className="font-bold text-emerald-700 dark:text-emerald-400 mb-2 flex items-center gap-2">
+                          <CheckCircle size={16} /> What you can do
+                        </p>
+                        <ul className="list-disc pl-5 space-y-1 text-text-main dark:text-slate-200">
+                          {sections["WHAT YOU CAN DO"].split("\n").map((line, i) => {
+                            const cleanLine = line.replace(/^[-•*]\s*/, "").trim();
+                            return cleanLine ? <li key={i}>{cleanLine}</li> : null;
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                    {sections["WHEN TO SEE A DOCTOR"] && (
+                      <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-900/30">
+                        <p className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
+                          <AlertCircle size={16} /> When to see a doctor
+                        </p>
+                        <ul className="list-disc pl-5 space-y-1 text-text-main dark:text-slate-200">
+                          {sections["WHEN TO SEE A DOCTOR"].split("\n").map((line, i) => {
+                            const cleanLine = line.replace(/^[-•*]\s*/, "").trim();
+                            return cleanLine ? <li key={i}>{cleanLine}</li> : null;
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                    {sections.DISCLAIMER && (
+                       <p className="text-xs text-text-muted italic mt-2 border-t pt-2 border-slate-100 dark:border-slate-700">
+                         {sections.DISCLAIMER}
+                       </p>
+                    )}
+                    {Array.isArray(msg.sources) && msg.sources.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/40">
+                        <p className="text-xs font-semibold text-text-muted dark:text-slate-400 mb-2 flex items-center gap-2">
+                          <Link size={14} />
+                          Sources
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.sources.map((src, i) => (
+                            <a
+                              key={i}
+                              href={src}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs text-primary transition shadow-sm"
+                            >
+                              Source {i + 1}
+                              <ExternalLink size={12} />
+                            </a>
+                          ))}
                         </div>
-                      );
-                    } else {
-                      // FALLBACK: Standard rendering for User messages or non-medical AI responses
-                      return (
-                        <div
-                          className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
-                          dangerouslySetInnerHTML={{
-                            __html: (() => {
-                              let html = msg.text || "";
-                              html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-                              html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
-                              let listCounter = 0;
-                              html = html.replace(/^[\s]*[-•*]\s+(.*)$/gm, (match, content) => {
-                                listCounter++;
-                                return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
-                              });
-                              return html;
-                            })(),
-                          }}
-                        />
-                      );
-                    }
-                  })()}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* ✅ INSERT STREAMING BUBBLE HERE */}
-          {streamingMessage && (
-            <div className="flex justify-start animate-slide-up">
-              <div className="flex max-w-[85%] flex-row">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3 text-secondary">
-                  <MessageSquare size={16} />
-                </div>
-                <div className="p-4 rounded-2xl rounded-tl-none bg-surface dark:bg-slate-800 border border-border shadow-theme">
-                  <div className="whitespace-pre-wrap text-text-main dark:text-slate-100 text-[15px] leading-relaxed">
-                    {streamingMessage}
-                    <span className="inline-block w-1.5 h-4 ml-1 bg-primary align-middle animate-pulse" />
+                      </div>
+                    )}
                   </div>
-                </div>
-              </div>
-            </div>
-          )}
-
+                );
+              } else {
+                return (
+                  <div
+                    className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{
+                      __html: (() => {
+                        let html = msg.text || "";
+                        html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+                        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
+                        let listCounter = 0;
+                        html = html.replace(/^[\s]*[-•*]\s+(.*)$/gm, (match, content) => {
+                          listCounter++;
+                          return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
+                        });
+                        return html;
+                      })(),
+                    }}
+                  />
+                );
+              }
+            })()}
+          </div>
+        </div>
+      </div>
+    </React.Fragment>
+  );
+})}
 
 
           {isChatLoading && <ThinkingBubble stage={thinkingStage} />}
