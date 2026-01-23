@@ -8,6 +8,8 @@ import {
   BarChart, Bar, Legend, Area
 } from 'recharts';
 import appIcon from "./assets/Finalicon.png";
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 
 
@@ -904,6 +906,7 @@ const App = () => {
   const [medications, setMedications] = useState([]);
   const [newMedication, setNewMedication] = useState({ name: '', dose: '', times: ['08:00'], days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] });
   const [isAdding, setIsAdding] = useState(false);
+  const assessmentRef = useRef(null);
   const [editingMedId, setEditingMedId] = useState(null);
 
   const [thinkingStage, setThinkingStage] = useState("analyzing");
@@ -2531,6 +2534,55 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
       setIsAssessmentLoading(false);
     }
   }, [isLocalRun, stepCount, sleepHours, calories, distance, heartRate, hydration, hydrationGoal, stepsTrend, sleepTrend, heartRateTrend]);
+
+ const downloadAssessmentPDF = async () => {
+  if (!assessmentRef.current) return;
+  const element = assessmentRef.current;
+
+  // Add Branding (Header/Footer logic remains the same)
+  const brandHeader = document.createElement('div');
+  brandHeader.innerHTML = `<div style="padding: 20px; border-bottom: 2px solid #0F766E; margin-bottom: 20px; font-family: sans-serif;">
+    <h1 style="color: #0F766E; margin: 0; font-size: 24px;">VytalCare Wellness Report</h1>
+    <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px;">Date: ${new Date().toLocaleDateString()}</p>
+  </div>`;
+  element.prepend(brandHeader);
+
+  try {
+    const canvas = await html2canvas(element, {
+      scale: 3, // High resolution
+      useCORS: true,
+      backgroundColor: '#ffffff', // Force solid white background
+      onclone: (clonedDoc) => {
+        // Find the report container in the virtual/hidden clone
+        const reportCard = clonedDoc.querySelector('.animate-slide-up');
+        if (reportCard) {
+          // REMOVE ALL TRANSPARENCY & ANIMATIONS
+          reportCard.style.opacity = "1"; 
+          reportCard.style.visibility = "visible";
+          reportCard.style.animation = "none"; 
+          reportCard.style.transition = "none";
+          reportCard.style.transform = "none";
+          
+          // Force text and borders to be solid dark colors for contrast
+          const allText = reportCard.querySelectorAll('*');
+          allText.forEach(el => {
+            el.style.opacity = "1";
+          });
+        }
+      }
+    });
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save(`VytalCare_Report_${getTodayDateKey()}.pdf`);
+  } finally {
+    element.removeChild(brandHeader);
+  }
+};
   /** ---------------------------------------
    * Chatbot API Call - MODIFIED TO SAVE TO FIREBASE
    * -------------------------------------- */
@@ -4608,13 +4660,32 @@ Rules:
       {/* AI Assessment Report */}
       {
         (isAssessmentLoading || assessmentResult) && (
-          <div className="mt-8 bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 animate-slide-up">
-            <h3 className="text-2xl font-bold flex items-center mb-6 text-text-main">
-              <div className="w-10 h-10 bg-secondary/10 rounded-xl flex items-center justify-center mr-3">
-                <MessageSquare size={20} className="text-secondary" />
-              </div>
-              Wellness Analysis
-            </h3>
+          <div 
+  ref={assessmentRef} 
+  /* Added opacity-100 and relative to prevent "fading" during capture */
+  className="mt-8 bg-white dark:bg-slate-800 opacity-100 relative p-8 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 animate-slide-up"
+>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold flex items-center text-text-main">
+                <div className="w-10 h-10 bg-secondary/10 rounded-xl flex items-center justify-center mr-3">
+                  <MessageSquare size={20} className="text-secondary" />
+                </div>
+                Wellness Analysis
+              </h3>
+
+              {assessmentResult && !isAssessmentLoading && (
+                <button 
+    onClick={downloadAssessmentPDF}
+    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary/10 to-primary/5 
+               text-primary hover:from-primary hover:to-primary-dark hover:text-white 
+               rounded-xl font-bold transition-all duration-300 text-sm border border-primary/20 
+               shadow-sm hover:shadow-md group/pdf"
+  >
+    <ExternalLink size={16} className="group-hover/pdf:rotate-12 transition-transform" />
+    Download Report
+  </button>
+              )}
+            </div>
 
             {isAssessmentLoading && (
               <div className="flex flex-col items-center justify-center py-12">
