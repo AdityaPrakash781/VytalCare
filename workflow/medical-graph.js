@@ -1,213 +1,158 @@
-import { StateGraph } from "@langchain/langgraph";
-import fetch from "node-fetch";
-import { QdrantClient } from "@qdrant/js-client-rest";
-import dotenv from "dotenv";
-dotenv.config();
+import { StateGraph, END } from "@langchain/langgraph";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+// --- FIREBASE ADMIN SDK ---
+import { initializeApp, cert, getApps } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 
-/* ============================================================
-   QDRANT CLIENT
-============================================================ */
-const qdrant = new QdrantClient({
-  url: process.env.QDRANT_URL,
-  apiKey: process.env.QDRANT_API_KEY,
-  checkCompatibility: false,
+// Initialize Firebase Admin only if not already initialized
+if (!getApps().length && process.env.FIREBASE_SERVICE_ACCOUNT) {
+  initializeApp({
+    credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+  });
+}
+const db = getFirestore();
+// -------------------------
+
+const model = new ChatGoogleGenerativeAI({
+  modelName: "gemini-pro",
+  maxOutputTokens: 2048,
 });
 
-/* ============================================================
-   GEMINI HELPERS (REST API v1)
-============================================================ */
-const GEMINI_MODEL = "models/gemini-2.5-flash";
-const GEMINI_URL = (key) =>
-  `https://generativelanguage.googleapis.com/v1/${GEMINI_MODEL}:generateContent?key=${key}`;
+const graphState = {
+  message: null,
+  appId: null,      
+  userId: null,     
+  sessionId: null,  
+  category: null,
+  triage: null,
+  needs_doctor: null,
+  context: null,
+  answer: null,
+  sources: null,
+  memory_summary: null, 
+  memory_facts: null    
+};
 
-async function askGemini(prompt) {
-  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not set");
-  const response = await fetch(GEMINI_URL(process.env.GEMINI_API_KEY), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    }),
-  });
+/**
+ * 1. LOAD MEMORY NODE
+ * Pulls summary and past facts from Firestore
+ */
+async function nodeLoadMemory(state) {
+  const { appId, userId, sessionId } = state;
+  if (!db || !userId) return state;
 
-  const json = await response.json();
-  if (!response.ok) {
-    throw new Error(json?.error?.message || `Gemini error ${response.status}`);
-  }
-  return json?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const shortRef = db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`);
+  const shortSnap = await shortRef.get();
+  const shortSummary = shortSnap.exists ? shortSnap.data().summary : "";
+
+  const longSnap = await db
+    .collection(`artifacts/${appId}/users/${userId}/agent_memory_long`)
+    .orderBy("lastSeenAt", "desc")
+    .limit(5)
+    .get();
+
+  const longFacts = longSnap.docs.map(d => d.data());
+
+  return { ...state, memory_summary: shortSummary, memory_facts: longFacts };
 }
 
-async function embed(text) {
-  if (!process.env.GEMINI_API_KEY)
-    throw new Error("GEMINI_API_KEY not set for embeddings");
-
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: { parts: [{ text }] } }),
-    }
-  );
-
-  const json = await resp.json();
-  if (!resp.ok) throw new Error(json?.error?.message || "Embedding failed");
-  return json.embedding?.values || [];
-}
-
-/* ============================================================
-   NODE 1 — Analyze
-============================================================ */
+/**
+ * 2. ANALYZE NODE
+ * Categorizes and triages with memory awareness
+ */
 async function nodeAnalyze(state) {
   const prompt = `
-You are a medical pre-screening AI. Analyze the user's message and output structured JSON.
+    You are a medical pre-screening AI.
 
-USER MESSAGE:
-${state.message}
+    PAST CONTEXT SUMMARY: ${state.memory_summary || "None"}
+    KNOWN USER FACTS: ${JSON.stringify(state.memory_facts || [])}
 
-Respond ONLY in valid JSON:
-{
-  "category": "symptoms | test_report | general_question",
-  "triage": "low | medium | high",
-  "needs_doctor": true/false,
-  "followup_question": "string"
-}
-`;
+    CURRENT USER MESSAGE: ${state.message}
 
-  try {
-    const output = await askGemini(prompt);
-    const parsed = JSON.parse(output);
-    return {
-      ...state,
-      category: parsed.category || "general_question",
-      triage: parsed.triage || "low",
-      needs_doctor: Boolean(parsed.needs_doctor),
-      followup_question: parsed.followup_question || "",
-    };
-  } catch {
-    return {
-      ...state,
-      category: "general_question",
-      triage: "low",
-      needs_doctor: false,
-      followup_question: "",
-    };
-  }
+    Respond ONLY in valid JSON:
+    {
+      "category": "symptoms | test_report | general_question",
+      "triage": "low | medium | high",
+      "needs_doctor": true,
+      "followup_question": "string"
+    }
+  `;
+
+  const response = await model.invoke(prompt);
+  const result = JSON.parse(response.content);
+
+  return {
+    ...state,
+    category: result.category,
+    triage: result.triage,
+    needs_doctor: result.needs_doctor,
+  };
 }
 
-/* ============================================================
-   NODE 2 — Retrieve
-============================================================ */
+/**
+ * 3. RETRIEVE NODE
+ * (Mock RAG - replace with your actual vector store logic)
+ */
 async function nodeRetrieve(state) {
-  try {
-    const vec = await embed(state.message);
-    const results = await qdrant.search("medical_knowledge", {
-      vector: vec,
-      limit: 4,
-    });
-
-    const context = results
-      .map(
-        (r, i) => `
-[Document ${i + 1}]
-TITLE: ${r.payload?.title || "Untitled"}
-SUMMARY: ${r.payload?.summary || "(No summary)"}
-URL: ${r.payload?.url || "No URL"}
-`
-      )
-      .join("\n");
-
-    const sources = results
-      .map((r) => r.payload?.url)
-      .filter(Boolean);
-
-    return { ...state, context, sources };
-  } catch {
-    return { ...state, context: "" };
-  }
+  const mockContext = "MedlinePlus suggests that standard care for these symptoms involves monitoring and hydration.";
+  return { ...state, context: mockContext };
 }
 
-/* ============================================================
-   NODE 3 — Final Answer
-============================================================ */
+/**
+ * 4. FINAL ANSWER NODE
+ * Generates the response for the user
+ */
 async function nodeFinal(state) {
-  const prompt = `
-You are VytalCare Medical Assistant.
-
-USER QUESTION:
-${state.message}
-
-TRIAGE LEVEL:
-${state.triage}
-
-FOLLOW-UP QUESTION:
-${state.followup_question}
-
-NEEDS DOCTOR:
-${state.needs_doctor}
-
-RETRIEVED MEDICAL CONTEXT:
-${state.context || "No context available"}
-
-Write a clear, safe medical answer that:
-- Uses the context
-- Provides correct info
-- Does NOT diagnose
-- Does NOT prescribe medication
-
-FORMAT:
-ANSWER:
-(clear explanation in simple language)
-
-WHAT YOU CAN DO:
-- practical steps
-- home care advice
-
-WHEN TO SEE A DOCTOR:
-- warning signs
-- emergency symptoms
-
-DISCLAIMER:
-This is general information, not a medical diagnosis.
-`;
-
-  try {
-    const answer = await askGemini(prompt);
-    return { ...state, answer };
-  } catch {
-    return {
-      ...state,
-      answer: "Sorry, I couldn’t generate a response right now.",
-    };
-  }
+  const prompt = `Based on context: ${state.context}, answer: ${state.message}`;
+  const response = await model.invoke(prompt);
+  return { 
+    ...state, 
+    answer: response.content, 
+    sources: ["MedlinePlus Database"] 
+  };
 }
 
-/* ============================================================
-   LANGGRAPH DEFINITION
-============================================================ */
-const graph = new StateGraph({
-  channels: {
-  message: "string",
-  category: "string",
-  triage: "string",
-  needs_doctor: "boolean",
-  followup_question: "string",
-  context: "string",
-  sources: "array",        // ✅ ADD THIS
-  answer: "string",
-},
-});
+/**
+ * 5. STORE MEMORY NODE
+ * Updates conversation summary and stores facts
+ */
+async function nodeStoreMemory(state) {
+  const { appId, userId, sessionId } = state;
+  if (!db || !userId) return state;
 
-graph.addNode("analyze", nodeAnalyze);
-graph.addNode("retrieve", nodeRetrieve);
-graph.addNode("final", nodeFinal);
+  const summaryPrompt = `Summarize this medical exchange in 3 lines focusing on symptoms and risk.\nUser: ${state.message}\nAssistant: ${state.answer}`;
+  const summaryRes = await model.invoke(summaryPrompt);
+  
+  await db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`).set({
+    summary: summaryRes.content,
+    lastUpdatedAt: Date.now()
+  }, { merge: true });
 
-/* ============================================================
-   ✅ FIX — GRAPH EDGES + COMPILE
-============================================================ */
-graph.addEdge("__start__", "analyze");
-graph.addEdge("analyze", "retrieve");
-graph.addEdge("retrieve", "final");
-graph.addEdge("final", "__end__");
+  if (state.triage === "high" || state.needs_doctor) {
+    await db.collection(`artifacts/${appId}/users/${userId}/agent_memory_long`).add({
+      type: "risk",
+      value: state.category,
+      lastSeenAt: Date.now(),
+      source: "agent"
+    });
+  }
 
-export default graph.compile();
+  return state;
+}
+
+// WORKFLOW CONSTRUCTION
+const workflow = new StateGraph({ channels: graphState })
+  .addNode("load_memory", nodeLoadMemory)
+  .addNode("analyze", nodeAnalyze)
+  .addNode("retrieve", nodeRetrieve)
+  .addNode("final", nodeFinal)
+  .addNode("store_memory", nodeStoreMemory);
+
+workflow.setEntryPoint("load_memory");
+workflow.addEdge("load_memory", "analyze");
+workflow.addEdge("analyze", "retrieve");
+workflow.addEdge("retrieve", "final");
+workflow.addEdge("final", "store_memory");
+workflow.addEdge("store_memory", END);
+
+export const graph = workflow.compile();
