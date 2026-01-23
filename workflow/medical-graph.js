@@ -25,7 +25,7 @@ const graphState = {
   triage: null,
   needs_doctor: null,
   followup_question: null,
-  escalation_reason: null, // Improvement 1: Tracking the "Why"
+  escalation_reason: null, 
   context: null,
   answer: null,
   sources: null,
@@ -45,22 +45,35 @@ function nodeRoute(state) {
 
 async function nodeLoadMemory(state) {
   let { appId, userId, sessionId } = state;
+  
+  // ✅ 1. IDENTITY GUARD: Prevents memory failure if tokens are missing
+  if (!appId || !userId) {
+    console.warn("Memory Load Skipped: Missing appId or userId in graph state");
+    return { ...state, sessionId: sessionId || randomUUID() };
+  }
+
   if (!sessionId) sessionId = randomUUID();
-  if (!db || !userId) return { ...state, sessionId };
+  if (!db) return { ...state, sessionId };
 
-  const shortRef = db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`);
-  const shortSnap = await shortRef.get();
-  const shortSummary = shortSnap.exists ? shortSnap.data().summary : "";
+  try {
+    // ✅ 2. PATH VERIFICATION: Matches artifacts/${appId}/users/${userId} structure
+    const shortRef = db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`);
+    const shortSnap = await shortRef.get();
+    const shortSummary = shortSnap.exists ? shortSnap.data().summary : "";
 
-  const longSnap = await db
-    .collection(`artifacts/${appId}/users/${userId}/agent_memory_long`)
-    .orderBy("lastSeenAt", "desc")
-    .limit(5)
-    .get();
+    const longSnap = await db
+      .collection(`artifacts/${appId}/users/${userId}/agent_memory_long`)
+      .orderBy("lastSeenAt", "desc")
+      .limit(5)
+      .get();
 
-  const longFacts = longSnap.docs.map(d => d.data());
+    const longFacts = longSnap.docs.map(d => d.data());
 
-  return { ...state, sessionId, memory_summary: shortSummary, memory_facts: longFacts };
+    return { ...state, sessionId, memory_summary: shortSummary, memory_facts: longFacts };
+  } catch (error) {
+    console.error("Firestore Memory Load Error:", error);
+    return { ...state, sessionId };
+  }
 }
 
 async function nodeAnalyze(state) {
@@ -90,7 +103,9 @@ async function nodeAnalyze(state) {
   let result;
   
   try {
-    result = JSON.parse(response.content);
+    // Basic cleaning in case the model returns markdown code blocks
+    const cleanContent = response.content.replace(/```json|```/g, "").trim();
+    result = JSON.parse(cleanContent);
   } catch (err) {
     result = { category: "general_question", triage: "low", needs_doctor: false, followup_question: "" };
   }
@@ -98,14 +113,12 @@ async function nodeAnalyze(state) {
   let finalTriage = result.triage;
   let finalNeedsDoctor = result.needs_doctor;
 
-  // Improvement 2: Keyword hard-rule now forces both triage AND professional evaluation
-  const highRiskKeywords = ["chest pain", "can't breathe", "seizure", "fainted"];
+  const highRiskKeywords = ["chest pain", "can't breathe", "seizure", "fainted", "shortness of breath"];
   if (highRiskKeywords.some(word => state.message.toLowerCase().includes(word))) {
     finalTriage = "high";
-    finalNeedsDoctor = true; // Hardened logic: High risk always implies professional need
+    finalNeedsDoctor = true; 
   }
 
-  // Improvement 1: Set explicit escalation reasons for explainability
   let escalationReason = null;
   if (finalTriage === "high") {
     escalationReason = "High-risk symptoms detected (Critical Triage)";
@@ -150,6 +163,7 @@ async function nodeEscalation(state) {
 }
 
 async function nodeRetrieve(state) {
+  // In your real app, this would query your Qdrant vector store
   const mockContext = "MedlinePlus suggests standard care involves monitoring symptoms and hydration.";
   return { ...state, context: mockContext };
 }
@@ -167,26 +181,34 @@ async function nodeFinal(state) {
 
 async function nodeStoreMemory(state) {
   const { appId, userId, sessionId } = state;
-  if (!db || !userId) return state;
-
-  const summaryPrompt = `Summarize this medical exchange in 3 lines.\nUser: ${state.message}\nAssistant: ${state.answer}`;
-  const summaryRes = await model.invoke(summaryPrompt);
   
-  await db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`).set({
-    summary: summaryRes.content,
-    lastUpdatedAt: Date.now()
-  }, { merge: true });
+  // ✅ 3. STORAGE GUARD: Ensure we have identity before writing
+  if (!db || !userId || !appId) return state;
 
-  // Improvement 3: Session guard for Firestore long-term memory writes
-  if ((state.triage === "high" || state.needs_doctor) && sessionId) {
-    await db.collection(`artifacts/${appId}/users/${userId}/agent_memory_long`).add({
-      type: "risk",
-      value: state.message.slice(0, 200),
-      reason: state.escalation_reason,
-      lastSeenAt: Date.now(),
-      source: "agent"
-    });
+  try {
+    const summaryPrompt = `Summarize this medical exchange in 3 lines.\nUser: ${state.message}\nAssistant: ${state.answer}`;
+    const summaryRes = await model.invoke(summaryPrompt);
+    
+    // Write Short-Term (Session) Memory
+    await db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`).set({
+      summary: summaryRes.content,
+      lastUpdatedAt: Date.now()
+    }, { merge: true });
+
+    // Write Long-Term (Risk) Memory if applicable
+    if ((state.triage === "high" || state.needs_doctor) && sessionId) {
+      await db.collection(`artifacts/${appId}/users/${userId}/agent_memory_long`).add({
+        type: "risk",
+        value: state.message.slice(0, 200),
+        reason: state.escalation_reason,
+        lastSeenAt: Date.now(),
+        source: "agent"
+      });
+    }
+  } catch (error) {
+    console.error("Firestore Memory Store Error:", error);
   }
+  
   return state;
 }
 
