@@ -25,6 +25,7 @@ const graphState = {
   triage: null,
   needs_doctor: null,
   followup_question: null,
+  escalation_reason: null, // Improvement 1: Tracking the "Why"
   context: null,
   answer: null,
   sources: null,
@@ -34,10 +35,6 @@ const graphState = {
 
 // --- ROUTING LOGIC ---
 
-/**
- * STEP A — Router node
- * Acts as the final authority for the graph path.
- */
 function nodeRoute(state) {
   if (state.triage === "high") return "emergency";
   if (state.needs_doctor) return "escalation";
@@ -66,34 +63,15 @@ async function nodeLoadMemory(state) {
   return { ...state, sessionId, memory_summary: shortSummary, memory_facts: longFacts };
 }
 
-/**
- * STEP 1: Explicit Escalation Criteria in nodeAnalyze
- */
 async function nodeAnalyze(state) {
   const prompt = `
     You are a medical pre-screening AI.
-
     You must classify triage using the following STRICT rules:
 
     TRIAGE DEFINITIONS:
-
-    HIGH:
-    - Chest pain, breathing difficulty, fainting, seizures
-    - Severe bleeding, sudden weakness, confusion
-    - Symptoms involving heart, brain, lungs
-    - Worsening symptoms with past high-risk history
-    - Any symptom suggesting immediate danger
-
-    MEDIUM:
-    - Persistent symptoms (>48 hours)
-    - Symptoms interfering with daily life
-    - Concerning but non-acute pain
-    - Requires doctor evaluation but not emergency
-
-    LOW:
-    - Mild, short-term, improving symptoms
-    - General health questions
-    - Preventive or informational queries
+    HIGH: Chest pain, breathing difficulty, fainting, seizures, severe bleeding, sudden weakness, lung/brain/heart symptoms.
+    MEDIUM: Persistent symptoms (>48 hours), interference with daily life, non-acute pain.
+    LOW: Mild, short-term, improving symptoms, informational queries.
 
     PAST CONTEXT SUMMARY: ${state.memory_summary || "None"}
     KNOWN USER FACTS: ${JSON.stringify(state.memory_facts || [])}
@@ -114,24 +92,25 @@ async function nodeAnalyze(state) {
   try {
     result = JSON.parse(response.content);
   } catch (err) {
-    console.error("Invalid JSON from analyze node:", response.content);
-    result = { 
-        category: "general_question", 
-        triage: "low", 
-        needs_doctor: false, 
-        followup_question: "" 
-    };
+    result = { category: "general_question", triage: "low", needs_doctor: false, followup_question: "" };
   }
 
-  // --- STEP 2: RULE ENGINE PRIORITY ---
-  // You can still manually override LLM triage here if hard rules are triggered
   let finalTriage = result.triage;
   let finalNeedsDoctor = result.needs_doctor;
 
-  // Example: If message contains hard-coded danger words, force high triage
-  const highRiskKeywords = ["chest pain", "can't breathe", "seizure"];
+  // Improvement 2: Keyword hard-rule now forces both triage AND professional evaluation
+  const highRiskKeywords = ["chest pain", "can't breathe", "seizure", "fainted"];
   if (highRiskKeywords.some(word => state.message.toLowerCase().includes(word))) {
     finalTriage = "high";
+    finalNeedsDoctor = true; // Hardened logic: High risk always implies professional need
+  }
+
+  // Improvement 1: Set explicit escalation reasons for explainability
+  let escalationReason = null;
+  if (finalTriage === "high") {
+    escalationReason = "High-risk symptoms detected (Critical Triage)";
+  } else if (finalNeedsDoctor) {
+    escalationReason = "Symptoms require clinical professional evaluation";
   }
 
   return {
@@ -139,41 +118,32 @@ async function nodeAnalyze(state) {
     category: result.category,
     triage: finalTriage,
     needs_doctor: finalNeedsDoctor,
-    followup_question: result.followup_question
+    followup_question: result.followup_question,
+    escalation_reason: escalationReason
   };
 }
 
-/**
- * STEP B — Emergency path
- */
 async function nodeEmergency(state) {
   const prompt = `
     You are a medical safety assistant. The situation is HIGH RISK.
     User message: ${state.message}
+    Safety Warning Reason: ${state.escalation_reason} 
     Instructions:
     - Be calm but firm
     - Emphasize urgency
-    - Recommend emergency services if appropriate
-    - NO diagnosis
-    - NO medication advice
+    - Recommend emergency services immediately
+    - NO diagnosis or medication
   `;
   const response = await model.invoke(prompt);
   return { ...state, answer: response.content, sources: ["Emergency Safety Protocol"] };
 }
 
-/**
- * STEP C — Escalation path
- */
 async function nodeEscalation(state) {
   const prompt = `
     You are a medical assistant. Professional evaluation is advised.
+    Reason: ${state.escalation_reason}
     User message: ${state.message}
-    Explain:
-    - Why a doctor visit is recommended
-    - What type of specialist may help
-    - What symptoms to monitor
-    - When to seek urgent care
-    Do NOT diagnose.
+    Explain why a specialist may help and what symptoms to monitor. Do NOT diagnose.
   `;
   const response = await model.invoke(prompt);
   return { ...state, answer: response.content, sources: ["Clinical Care Guidance"] };
@@ -188,8 +158,7 @@ async function nodeFinal(state) {
   const prompt = `
     Context: ${state.context}
     User message: ${state.message}
-    If a follow-up question exists, ask it clearly.
-    Follow-up question: ${state.followup_question || "None"}
+    If a follow-up question exists, ask it clearly: ${state.followup_question || "None"}
     Provide a safe, clear medical response.
   `;
   const response = await model.invoke(prompt);
@@ -208,11 +177,12 @@ async function nodeStoreMemory(state) {
     lastUpdatedAt: Date.now()
   }, { merge: true });
 
-  if (state.triage === "high" || state.needs_doctor) {
+  // Improvement 3: Session guard for Firestore long-term memory writes
+  if ((state.triage === "high" || state.needs_doctor) && sessionId) {
     await db.collection(`artifacts/${appId}/users/${userId}/agent_memory_long`).add({
       type: "risk",
       value: state.message.slice(0, 200),
-      confidence: 0.9,
+      reason: state.escalation_reason,
       lastSeenAt: Date.now(),
       source: "agent"
     });
@@ -235,7 +205,6 @@ const workflow = new StateGraph({ channels: graphState })
 workflow.setEntryPoint("load_memory");
 workflow.addEdge("load_memory", "analyze");
 
-// STEP D: Conditional Edges
 workflow.addConditionalEdges(
   "analyze",
   nodeRoute,
