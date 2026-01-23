@@ -13,6 +13,8 @@
     "@qdrant/js-client-rest": "latest",
     "dotenv": "^16.4.5",
     "firebase": "^10.8.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.0.0",
     "lucide-react": "^0.559.0",
     "node-fetch": "^3.3.2",
     "react": "^18.2.0",
