@@ -4,6 +4,7 @@ import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 
+// Initialize Firebase Admin SDK for backend Firestore access
 if (!getApps().length && process.env.FIREBASE_SERVICE_ACCOUNT) {
   initializeApp({
     credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
@@ -46,7 +47,7 @@ function nodeRoute(state) {
 async function nodeLoadMemory(state) {
   let { appId, userId, sessionId } = state;
   
-  // ✅ 1. IDENTITY GUARD: Prevents memory failure if tokens are missing
+  // ✅ 1. IDENTITY GUARD: Ensures memory isn't skipped due to missing tokens
   if (!appId || !userId) {
     console.warn("Memory Load Skipped: Missing appId or userId in graph state");
     return { ...state, sessionId: sessionId || randomUUID() };
@@ -56,7 +57,7 @@ async function nodeLoadMemory(state) {
   if (!db) return { ...state, sessionId };
 
   try {
-    // ✅ 2. PATH VERIFICATION: Matches artifacts/${appId}/users/${userId} structure
+    // ✅ 2. PATH ALIGNMENT: Matches the artifacts/${appId}/users/${userId} structure
     const shortRef = db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`);
     const shortSnap = await shortRef.get();
     const shortSummary = shortSnap.exists ? shortSnap.data().summary : "";
@@ -103,16 +104,18 @@ async function nodeAnalyze(state) {
   let result;
   
   try {
-    // Basic cleaning in case the model returns markdown code blocks
+    // ✅ 3. HARDENED PARSER: Cleans markdown formatting before parsing
     const cleanContent = response.content.replace(/```json|```/g, "").trim();
     result = JSON.parse(cleanContent);
   } catch (err) {
+    console.error("JSON Parse Error. Raw content was:", response.content);
     result = { category: "general_question", triage: "low", needs_doctor: false, followup_question: "" };
   }
 
   let finalTriage = result.triage;
   let finalNeedsDoctor = result.needs_doctor;
 
+  // Safety Overrides: Force high triage for critical keywords
   const highRiskKeywords = ["chest pain", "can't breathe", "seizure", "fainted", "shortness of breath"];
   if (highRiskKeywords.some(word => state.message.toLowerCase().includes(word))) {
     finalTriage = "high";
@@ -141,11 +144,7 @@ async function nodeEmergency(state) {
     You are a medical safety assistant. The situation is HIGH RISK.
     User message: ${state.message}
     Safety Warning Reason: ${state.escalation_reason} 
-    Instructions:
-    - Be calm but firm
-    - Emphasize urgency
-    - Recommend emergency services immediately
-    - NO diagnosis or medication
+    Instructions: Recommend emergency services immediately. NO diagnosis.
   `;
   const response = await model.invoke(prompt);
   return { ...state, answer: response.content, sources: ["Emergency Safety Protocol"] };
@@ -156,14 +155,13 @@ async function nodeEscalation(state) {
     You are a medical assistant. Professional evaluation is advised.
     Reason: ${state.escalation_reason}
     User message: ${state.message}
-    Explain why a specialist may help and what symptoms to monitor. Do NOT diagnose.
+    Explain why a specialist may help. Do NOT diagnose.
   `;
   const response = await model.invoke(prompt);
   return { ...state, answer: response.content, sources: ["Clinical Care Guidance"] };
 }
 
 async function nodeRetrieve(state) {
-  // In your real app, this would query your Qdrant vector store
   const mockContext = "MedlinePlus suggests standard care involves monitoring symptoms and hydration.";
   return { ...state, context: mockContext };
 }
@@ -172,7 +170,6 @@ async function nodeFinal(state) {
   const prompt = `
     Context: ${state.context}
     User message: ${state.message}
-    If a follow-up question exists, ask it clearly: ${state.followup_question || "None"}
     Provide a safe, clear medical response.
   `;
   const response = await model.invoke(prompt);
@@ -182,8 +179,11 @@ async function nodeFinal(state) {
 async function nodeStoreMemory(state) {
   const { appId, userId, sessionId } = state;
   
-  // ✅ 3. STORAGE GUARD: Ensure we have identity before writing
-  if (!db || !userId || !appId) return state;
+  // ✅ 4. STORAGE GUARD: Prevents silent failure during database writes
+  if (!db || !userId || !appId) {
+    console.warn("Storage Skipped: Missing identity tokens.");
+    return state;
+  }
 
   try {
     const summaryPrompt = `Summarize this medical exchange in 3 lines.\nUser: ${state.message}\nAssistant: ${state.answer}`;
@@ -195,15 +195,16 @@ async function nodeStoreMemory(state) {
       lastUpdatedAt: Date.now()
     }, { merge: true });
 
-    // Write Long-Term (Risk) Memory if applicable
+    // ✅ 5. CONDITIONAL LONG-TERM STORAGE: Only writes for high-risk detected triage
     if ((state.triage === "high" || state.needs_doctor) && sessionId) {
       await db.collection(`artifacts/${appId}/users/${userId}/agent_memory_long`).add({
         type: "risk",
         value: state.message.slice(0, 200),
-        reason: state.escalation_reason,
+        reason: state.escalation_reason || "Risk detected",
         lastSeenAt: Date.now(),
         source: "agent"
       });
+      console.log("Risk event logged to long-term memory.");
     }
   } catch (error) {
     console.error("Firestore Memory Store Error:", error);
