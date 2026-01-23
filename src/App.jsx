@@ -2721,17 +2721,15 @@ RULES:
           }
         };
 
-        // --- START STREAMING EFFECT ---
-        setStreamingMessage(""); // Initialize empty bubble
+       // --- START STREAMING EFFECT (Refined word-chunking) ---
+        setStreamingMessage(""); 
 
         const words = modelText.split(" ");
         let index = 0;
 
-        // Typing speed (adjust 25ms for faster/slower)
         const interval = setInterval(() => {
           setStreamingMessage(prev => {
             const nextWord = words[index];
-            // Handle undefined safety if index goes out of bounds
             return nextWord ? (prev ? prev + " " + nextWord : nextWord) : prev;
           });
 
@@ -2739,14 +2737,13 @@ RULES:
 
           if (index >= words.length) {
             clearInterval(interval);
-
-            // Small delay before finalizing to let user read the last word
+            // Small delay to let the user see the final word before moving to history
             setTimeout(() => {
-              setStreamingMessage(null); // Remove streaming bubble
-              saveFinalModelMessage();   // Add permanent bubble to history
-            }, 100);
+              setStreamingMessage(null); 
+              saveFinalModelMessage();
+            }, 300);
           }
-        }, 30);
+        }, 40); // 40ms per word is the "Goldilocks" speed for reading
 
       } catch (e) {
         console.error("❌ Chatbot Error:", e);
@@ -4956,7 +4953,23 @@ Rules:
     </React.Fragment>
   );
 })}
-
+          
+{/* NEW: Streaming Bubble with Pulse Cursor */}
+{streamingMessage !== null && (
+  <div className="flex justify-start mt-4 animate-slide-up">
+    <div className="flex max-w-[85%] flex-row">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center mt-1 mr-3 text-secondary shadow-theme">
+        <MessageSquare size={16} />
+      </div>
+      <div className="p-4 rounded-2xl rounded-tl-none bg-surface dark:bg-slate-800 text-text-main dark:text-slate-100 border border-border shadow-theme-lg">
+        <div className="whitespace-pre-wrap break-words min-h-[1.5rem]">
+          {streamingMessage}
+          <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse align-middle">▍</span>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
           {isChatLoading && <ThinkingBubble stage={thinkingStage} />}
         </div>
