@@ -5,7 +5,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 
 /* ============================================================
-   FIREBASE ADMIN INIT (SAFE FOR VERCEL)
+   FIREBASE ADMIN INIT (SAFE FOR SERVERLESS)
 ============================================================ */
 if (!getApps().length && process.env.FIREBASE_SERVICE_ACCOUNT) {
   initializeApp({
@@ -42,16 +42,15 @@ const graphState = {
 
   memory_summary: null,
   memory_facts: null,
+  escalation_reason: null,
 };
 
 /* ============================================================
-   🔴 MEDICAL SAFETY RULE ENGINE (SCALABLE)
+   MEDICAL RULE ENGINE (DETERMINISTIC SAFETY)
 ============================================================ */
-
-/** Always HIGH risk conditions */
 const HIGH_RISK_RULES = [
   { label: "Cancer", keywords: ["cancer", "tumor", "malignant", "metastasis", "chemotherapy", "radiation"] },
-  { label: "Cardiac event", keywords: ["heart attack", "myocardial infarction", "cardiac arrest"] },
+  { label: "Cardiac disease", keywords: ["heart attack", "cardiac arrest", "myocardial infarction"] },
   { label: "Stroke", keywords: ["stroke", "brain bleed", "hemorrhage"] },
   { label: "Organ failure", keywords: ["kidney failure", "liver failure", "respiratory failure"] },
   { label: "Severe infection", keywords: ["sepsis", "blood infection"] },
@@ -59,7 +58,6 @@ const HIGH_RISK_RULES = [
   { label: "Immunocompromised", keywords: ["hiv", "aids", "transplant", "immunosuppressed"] },
 ];
 
-/** Acute danger symptoms (override everything) */
 const ACUTE_DANGER_SYMPTOMS = [
   "chest pain",
   "shortness of breath",
@@ -86,19 +84,34 @@ function detectAcuteDanger(text = "") {
 }
 
 /* ============================================================
-   NODE 1 — LOAD MEMORY
+   NODE 1 — LOAD MEMORY + CREATE SESSION
 ============================================================ */
 async function nodeLoadMemory(state) {
   let { appId, userId, sessionId } = state;
-
   if (!sessionId) sessionId = randomUUID();
-  if (!db || !userId) return { ...state, sessionId };
 
-  const shortRef = db.doc(
-    `artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`
+  if (!db || !userId) {
+    return { ...state, sessionId };
+  }
+
+  const sessionRef = db.doc(
+    `artifacts/${appId}/users/${userId}/agent_sessions/${sessionId}`
   );
-  const shortSnap = await shortRef.get();
-  const shortSummary = shortSnap.exists ? shortSnap.data().summary : "";
+
+  await sessionRef.set(
+    {
+      startedAt: Date.now(),
+      lastActiveAt: Date.now(),
+      active: true,
+    },
+    { merge: true }
+  );
+
+  const shortSnap = await db
+    .doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`)
+    .get();
+
+  const memory_summary = shortSnap.exists ? shortSnap.data().summary : "";
 
   const longSnap = await db
     .collection(`artifacts/${appId}/users/${userId}/agent_memory_long`)
@@ -106,13 +119,13 @@ async function nodeLoadMemory(state) {
     .limit(5)
     .get();
 
-  const longFacts = longSnap.docs.map(d => d.data());
+  const memory_facts = longSnap.docs.map(d => d.data());
 
   return {
     ...state,
     sessionId,
-    memory_summary: shortSummary,
-    memory_facts: longFacts,
+    memory_summary,
+    memory_facts,
   };
 }
 
@@ -123,13 +136,13 @@ async function nodeAnalyze(state) {
   const prompt = `
 You are a medical pre-screening AI.
 
-PAST CONTEXT SUMMARY:
+PAST CONTEXT:
 ${state.memory_summary || "None"}
 
-KNOWN USER FACTS:
+KNOWN FACTS:
 ${JSON.stringify(state.memory_facts || [])}
 
-CURRENT USER MESSAGE:
+USER MESSAGE:
 ${state.message}
 
 Respond ONLY in valid JSON:
@@ -141,12 +154,12 @@ Respond ONLY in valid JSON:
 }
 `;
 
-  let result;
+  let parsed;
   try {
-    const response = await model.invoke(prompt);
-    result = JSON.parse(response.content);
+    const res = await model.invoke(prompt);
+    parsed = JSON.parse(res.content);
   } catch {
-    result = {
+    parsed = {
       category: "general_question",
       triage: "low",
       needs_doctor: false,
@@ -154,33 +167,32 @@ Respond ONLY in valid JSON:
     };
   }
 
-  /* ---------- RULE ENGINE OVERRIDES ---------- */
-  const highRiskCondition = detectHighRisk(state.message);
+  const highRisk = detectHighRisk(state.message);
   const acuteDanger = detectAcuteDanger(state.message);
 
-  let triage = result.triage;
-  let needsDoctor = result.needs_doctor;
-  let escalationReason = null;
+  let triage = parsed.triage;
+  let needs_doctor = parsed.needs_doctor;
+  let escalation_reason = null;
 
-  if (highRiskCondition) {
+  if (highRisk) {
     triage = "high";
-    needsDoctor = true;
-    escalationReason = highRiskCondition.label;
+    needs_doctor = true;
+    escalation_reason = highRisk.label;
   }
 
   if (acuteDanger) {
     triage = "high";
-    needsDoctor = true;
-    escalationReason = "Acute danger symptom";
+    needs_doctor = true;
+    escalation_reason = "Acute danger symptom";
   }
 
   return {
     ...state,
-    category: result.category,
+    category: parsed.category,
     triage,
-    needs_doctor: needsDoctor,
-    followup_question: result.followup_question,
-    escalation_reason: escalationReason,
+    needs_doctor,
+    followup_question: parsed.followup_question,
+    escalation_reason,
   };
 }
 
@@ -189,7 +201,7 @@ Respond ONLY in valid JSON:
 ============================================================ */
 async function nodeRetrieve(state) {
   const context =
-    "MedlinePlus indicates that serious or chronic conditions require ongoing medical supervision.";
+    "MedlinePlus advises that serious or chronic conditions require professional medical supervision.";
   return { ...state, context };
 }
 
@@ -206,18 +218,14 @@ ${state.message}
 TRIAGE LEVEL:
 ${state.triage}
 
-NEEDS DOCTOR:
-${state.needs_doctor}
-
 FOLLOW-UP QUESTION:
 ${state.followup_question || "None"}
 
 CONTEXT:
 ${state.context}
 
-Provide a calm, clear, supportive response.
+Respond clearly, calmly, and safely.
 Do NOT diagnose or prescribe medication.
-Emphasize safety and appropriate escalation when needed.
 `;
 
   const response = await model.invoke(prompt);
@@ -230,14 +238,14 @@ Emphasize safety and appropriate escalation when needed.
 }
 
 /* ============================================================
-   NODE 5 — STORE MEMORY (EXPLAINABLE)
+   NODE 5 — STORE MEMORY + UPDATE SESSION
 ============================================================ */
 async function nodeStoreMemory(state) {
   const { appId, userId, sessionId } = state;
   if (!db || !userId) return state;
 
   const summaryPrompt = `
-Summarize this interaction in 3 lines focusing on medical risk and concerns.
+Summarize this interaction in 3 lines focusing on risk and concerns.
 User: ${state.message}
 Assistant: ${state.answer}
 `;
@@ -264,6 +272,21 @@ Assistant: ${state.answer}
         source: "rule_engine",
       });
   }
+
+  await db
+    .doc(`artifacts/${appId}/users/${userId}/agent_sessions/${sessionId}`)
+    .set(
+      {
+        lastActiveAt: Date.now(),
+        currentTriage: state.triage,
+        currentGoal:
+          state.triage === "high"
+            ? "Ongoing risk monitoring and escalation"
+            : "General health guidance",
+        active: true,
+      },
+      { merge: true }
+    );
 
   return state;
 }
