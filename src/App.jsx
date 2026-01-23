@@ -2751,17 +2751,17 @@ RULES:
           console.log("💬 Text message → RAG Backend");
 
           const response = await fetch("/api/chat-rag", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              message: newMessage,
-              history: chatHistory.slice(-10),
-              // ✅ NEW: Added session context for agentic behavior
-              sessionId: currentAgentSessionId, 
-              image: null
-            })
-          });
-
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    message: newMessage,
+    history: chatHistory.slice(-10),
+    appId,      // <--- ADD THIS
+    userId,     // <--- ADD THIS
+    sessionId: currentAgentSessionId, 
+    image: null
+  })
+});
           if (!response.ok) {
             throw new Error(`Backend RAG error: ${response.status}`);
           }
