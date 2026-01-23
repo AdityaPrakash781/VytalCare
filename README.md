@@ -50,13 +50,17 @@
 
 ### 🧠 Agentic AI Capabilities
 
-VytalCare goes beyond passive tracking—it takes autonomous actions to keep you healthy:
+VytalCare goes beyond passive tracking—it utilizes a stateful LangGraph architecture to take autonomous actions based on your health context:
 
-- **Automated Calendar Integration**: Automatically syncs medication schedules to your Google Calendar, ensuring you never miss a dose
-- **n8n Workflow Automation**: Triggers intelligent workflows when prescriptions are created, sending reminders to caregivers and healthcare providers via webhook
-- **Gemini Vision Analysis**: AI-powered health metric analysis that generates structured wellness reports with actionable recommendations in tabular format
-- **Predictive Health Scoring**: Weighted algorithmic engine calculates your daily Health Score (0-100) based on multiple biometric factors
-- **Smart Notification System**: Real-time browser notifications for medication reminders with "Mark as Taken" functionality that auto-logs adherence
+- **Dynamic Triage Routing:** Every query is analyzed against strict clinical criteria (e.g., chest pain, breathing difficulty). High-risk symptoms automatically bypass standard chat to trigger Emergency Safety Protocols.
+
+- **Cross-Session Fact Persistence:** The agent remembers chronic conditions and previous risks by storing high-signal "Facts" in Firestore, allowing for longitudinal health awareness across different chat sessions.
+
+- **Hierarchical Memory System:** Implements a dual-memory approach—Short-term memory for immediate conversation summaries and Long-term memory for persistent medical facts.
+
+- **Automated Session Summarization:** Uses Gemini to compress every conversation into a 3-line memory block, ensuring the AI always has the "Big Picture" of your health concerns without "prompt stuffing".
+
+- **Crash-Safe Reasoning:** The nodeAnalyze node includes a "Safe-Fail" mechanism that handles malformed LLM outputs, ensuring the agent remains operational even if the model provides invalid JSON.
 
 ### 📊 Comprehensive Health Tracking
 
