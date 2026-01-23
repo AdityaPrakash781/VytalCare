@@ -1,45 +1,54 @@
 import { StateGraph, END } from "@langchain/langgraph";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-// --- FIREBASE ADMIN SDK ---
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+// FIX 3: Enforce session lifecycle
+import { randomUUID } from "crypto"; 
 
-// Initialize Firebase Admin only if not already initialized
 if (!getApps().length && process.env.FIREBASE_SERVICE_ACCOUNT) {
   initializeApp({
     credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
   });
 }
 const db = getFirestore();
-// -------------------------
 
 const model = new ChatGoogleGenerativeAI({
   modelName: "gemini-pro",
   maxOutputTokens: 2048,
 });
 
+// FIX 2: Add followup_question to graph state
 const graphState = {
   message: null,
-  appId: null,      
-  userId: null,     
-  sessionId: null,  
+  appId: null,
+  userId: null,
+  sessionId: null,
   category: null,
   triage: null,
   needs_doctor: null,
+  followup_question: null, // Added for UX
   context: null,
   answer: null,
   sources: null,
-  memory_summary: null, 
-  memory_facts: null    
+  memory_summary: null,
+  memory_facts: null
 };
 
 /**
  * 1. LOAD MEMORY NODE
- * Pulls summary and past facts from Firestore
+ * FIX 3: Implicit session management to prevent data corruption
  */
 async function nodeLoadMemory(state) {
-  const { appId, userId, sessionId } = state;
-  if (!db || !userId) return state;
+  let { appId, userId, sessionId } = state;
+
+  // Enforce session ID presence
+  if (!sessionId) {
+    sessionId = randomUUID();
+  }
+
+  if (!db || !userId) {
+    return { ...state, sessionId };
+  }
 
   const shortRef = db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`);
   const shortSnap = await shortRef.get();
@@ -53,22 +62,24 @@ async function nodeLoadMemory(state) {
 
   const longFacts = longSnap.docs.map(d => d.data());
 
-  return { ...state, memory_summary: shortSummary, memory_facts: longFacts };
+  return { 
+    ...state, 
+    sessionId, // Persist ID
+    memory_summary: shortSummary, 
+    memory_facts: longFacts 
+  };
 }
 
 /**
  * 2. ANALYZE NODE
- * Categorizes and triages with memory awareness
+ * FIX 1: Crash-safe JSON parsing and follow-up return
  */
 async function nodeAnalyze(state) {
   const prompt = `
     You are a medical pre-screening AI.
-
     PAST CONTEXT SUMMARY: ${state.memory_summary || "None"}
     KNOWN USER FACTS: ${JSON.stringify(state.memory_facts || [])}
-
     CURRENT USER MESSAGE: ${state.message}
-
     Respond ONLY in valid JSON:
     {
       "category": "symptoms | test_report | general_question",
@@ -79,31 +90,50 @@ async function nodeAnalyze(state) {
   `;
 
   const response = await model.invoke(prompt);
-  const result = JSON.parse(response.content);
+  let result;
+  
+  // MANDATORY: Error handling for LLM output
+  try {
+    result = JSON.parse(response.content);
+  } catch (err) {
+    console.error("Invalid JSON from analyze node. Raw content:", response.content);
+    result = {
+      category: "general_question",
+      triage: "low",
+      needs_doctor: false,
+      followup_question: ""
+    };
+  }
 
   return {
     ...state,
     category: result.category,
     triage: result.triage,
     needs_doctor: result.needs_doctor,
+    followup_question: result.followup_question // FIX 2: Propagate followup
   };
 }
 
 /**
  * 3. RETRIEVE NODE
- * (Mock RAG - replace with your actual vector store logic)
  */
 async function nodeRetrieve(state) {
-  const mockContext = "MedlinePlus suggests that standard care for these symptoms involves monitoring and hydration.";
+  const mockContext = "MedlinePlus suggests standard care involves monitoring symptoms and maintaining hydration.";
   return { ...state, context: mockContext };
 }
 
 /**
  * 4. FINAL ANSWER NODE
- * Generates the response for the user
+ * FIX 2: Intentional follow-up question usage
  */
 async function nodeFinal(state) {
-  const prompt = `Based on context: ${state.context}, answer: ${state.message}`;
+  const prompt = `
+    Context: ${state.context}
+    User message: ${state.message}
+    If a follow-up question exists, ask it clearly.
+    Follow-up question: ${state.followup_question || "None"}
+    Provide a safe, clear medical response.
+  `;
   const response = await model.invoke(prompt);
   return { 
     ...state, 
@@ -114,13 +144,13 @@ async function nodeFinal(state) {
 
 /**
  * 5. STORE MEMORY NODE
- * Updates conversation summary and stores facts
+ * FIX 4: Enhanced signal for long-term memory
  */
 async function nodeStoreMemory(state) {
   const { appId, userId, sessionId } = state;
   if (!db || !userId) return state;
 
-  const summaryPrompt = `Summarize this medical exchange in 3 lines focusing on symptoms and risk.\nUser: ${state.message}\nAssistant: ${state.answer}`;
+  const summaryPrompt = `Summarize this medical exchange in 3 lines.\nUser: ${state.message}\nAssistant: ${state.answer}`;
   const summaryRes = await model.invoke(summaryPrompt);
   
   await db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`).set({
@@ -128,10 +158,12 @@ async function nodeStoreMemory(state) {
     lastUpdatedAt: Date.now()
   }, { merge: true });
 
+  // Increased signal: store actual user message content
   if (state.triage === "high" || state.needs_doctor) {
     await db.collection(`artifacts/${appId}/users/${userId}/agent_memory_long`).add({
       type: "risk",
-      value: state.category,
+      value: state.message.slice(0, 200), // Meaningful context
+      confidence: 0.9,
       lastSeenAt: Date.now(),
       source: "agent"
     });
