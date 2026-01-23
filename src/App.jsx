@@ -903,6 +903,7 @@ const App = () => {
   const [db, setDb] = useState(null);
   const [auth, setAuth] = useState(null);
   const [userId, setUserId] = useState(null);
+  const [currentAgentSessionId, setCurrentAgentSessionId] = useState(crypto.randomUUID());
   const [medications, setMedications] = useState([]);
   const [newMedication, setNewMedication] = useState({ name: '', dose: '', times: ['08:00'], days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] });
   const [isAdding, setIsAdding] = useState(false);
@@ -1137,16 +1138,37 @@ const App = () => {
       setDb(firestore);
       setAuth(authentication);
 
-      const unsubscribeAuth = onAuthStateChanged(authentication, async (user) => {
+     const unsubscribeAuth = onAuthStateChanged(authentication, async (user) => {
         if (user) {
-          setUserId(user.uid);
+          const uid = user.uid;
+          setUserId(uid);
+          
+          // ✅ NEW: Initialize Agent Session
+          const sessionRef = doc(firestore, `/artifacts/${appId}/users/${uid}/agent_sessions/${currentAgentSessionId}`);
+          await setDoc(sessionRef, {
+            startedAt: Date.now(),
+            lastActiveAt: Date.now(),
+            currentTriage: "low",
+            active: true
+          }, { merge: true });
+
           setIsLoading(false);
         } else {
           if (initialAuthToken) {
             await signInWithCustomToken(authentication, initialAuthToken);
           } else {
             const anonUser = await signInAnonymously(authentication);
-            setUserId(anonUser.user.uid);
+            const uid = anonUser.user.uid;
+            setUserId(uid);
+
+            // ✅ NEW: Initialize Agent Session for Anonymous User
+            const sessionRef = doc(firestore, `/artifacts/${appId}/users/${uid}/agent_sessions/${currentAgentSessionId}`);
+            await setDoc(sessionRef, {
+              startedAt: Date.now(),
+              lastActiveAt: Date.now(),
+              currentTriage: "low",
+              active: true
+            }, { merge: true });
           }
           setIsLoading(false);
         }
@@ -1334,6 +1356,26 @@ const App = () => {
         console.error('Error fetching emergency contacts:', error);
       }
     );
+
+    return () => unsubscribe();
+  }, [db, userId]);
+
+  // ✅ NEW: Agent Long-Term Memory Listener
+  useEffect(() => {
+    if (!db || !userId) return;
+
+    // This listener scopes to your new agent_memory_long collection
+    const memoryRef = collection(db, `/artifacts/${appId}/users/${userId}/agent_memory_long`);
+    
+    const unsubscribe = onSnapshot(memoryRef, (snapshot) => {
+      // This allows the UI to react to facts learned by the agent
+      const facts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      console.log("Agent learned facts:", facts);
+      // Future Step: You can store these 'facts' in a state to personalize prompts
+    }, (err) => console.error("Memory Listener Error:", err));
 
     return () => unsubscribe();
   }, [db, userId]);
@@ -2714,6 +2756,8 @@ RULES:
             body: JSON.stringify({
               message: newMessage,
               history: chatHistory.slice(-10),
+              // ✅ NEW: Added session context for agentic behavior
+              sessionId: currentAgentSessionId, 
               image: null
             })
           });
