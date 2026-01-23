@@ -4,114 +4,56 @@ import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 
-/* ============================================================
-   FIREBASE ADMIN INIT (SAFE FOR SERVERLESS)
-============================================================ */
 if (!getApps().length && process.env.FIREBASE_SERVICE_ACCOUNT) {
   initializeApp({
-    credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
+    credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
   });
 }
 const db = getFirestore();
 
-/* ============================================================
-   LLM
-============================================================ */
 const model = new ChatGoogleGenerativeAI({
   modelName: "gemini-pro",
   maxOutputTokens: 2048,
 });
 
-/* ============================================================
-   GRAPH STATE
-============================================================ */
 const graphState = {
   message: null,
   appId: null,
   userId: null,
   sessionId: null,
-
   category: null,
   triage: null,
   needs_doctor: null,
   followup_question: null,
-
   context: null,
   answer: null,
   sources: null,
-
   memory_summary: null,
-  memory_facts: null,
-  escalation_reason: null,
+  memory_facts: null
 };
 
-/* ============================================================
-   MEDICAL RULE ENGINE (DETERMINISTIC SAFETY)
-============================================================ */
-const HIGH_RISK_RULES = [
-  { label: "Cancer", keywords: ["cancer", "tumor", "malignant", "metastasis", "chemotherapy", "radiation"] },
-  { label: "Cardiac disease", keywords: ["heart attack", "cardiac arrest", "myocardial infarction"] },
-  { label: "Stroke", keywords: ["stroke", "brain bleed", "hemorrhage"] },
-  { label: "Organ failure", keywords: ["kidney failure", "liver failure", "respiratory failure"] },
-  { label: "Severe infection", keywords: ["sepsis", "blood infection"] },
-  { label: "Pregnancy risk", keywords: ["ectopic", "pre-eclampsia", "pregnancy complication"] },
-  { label: "Immunocompromised", keywords: ["hiv", "aids", "transplant", "immunosuppressed"] },
-];
+// --- ROUTING LOGIC ---
 
-const ACUTE_DANGER_SYMPTOMS = [
-  "chest pain",
-  "shortness of breath",
-  "difficulty breathing",
-  "fainting",
-  "unconscious",
-  "seizure",
-  "severe bleeding",
-  "confusion",
-  "sudden weakness",
-  "vision loss",
-];
-
-function detectHighRisk(text = "") {
-  const lower = text.toLowerCase();
-  return HIGH_RISK_RULES.find(rule =>
-    rule.keywords.some(k => lower.includes(k))
-  );
+/**
+ * STEP A — Router node
+ * Acts as the final authority for the graph path.
+ */
+function nodeRoute(state) {
+  if (state.triage === "high") return "emergency";
+  if (state.needs_doctor) return "escalation";
+  return "retrieve";
 }
 
-function detectAcuteDanger(text = "") {
-  const lower = text.toLowerCase();
-  return ACUTE_DANGER_SYMPTOMS.some(s => lower.includes(s));
-}
+// --- CORE NODES ---
 
-/* ============================================================
-   NODE 1 — LOAD MEMORY + CREATE SESSION
-============================================================ */
 async function nodeLoadMemory(state) {
   let { appId, userId, sessionId } = state;
   if (!sessionId) sessionId = randomUUID();
+  if (!db || !userId) return { ...state, sessionId };
 
-  if (!db || !userId) {
-    return { ...state, sessionId };
-  }
-
-  const sessionRef = db.doc(
-    `artifacts/${appId}/users/${userId}/agent_sessions/${sessionId}`
-  );
-
-  await sessionRef.set(
-    {
-      startedAt: Date.now(),
-      lastActiveAt: Date.now(),
-      active: true,
-    },
-    { merge: true }
-  );
-
-  const shortSnap = await db
-    .doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`)
-    .get();
-
-  const memory_summary = shortSnap.exists ? shortSnap.data().summary : "";
+  const shortRef = db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`);
+  const shortSnap = await shortRef.get();
+  const shortSummary = shortSnap.exists ? shortSnap.data().summary : "";
 
   const longSnap = await db
     .collection(`artifacts/${appId}/users/${userId}/agent_memory_long`)
@@ -119,193 +61,195 @@ async function nodeLoadMemory(state) {
     .limit(5)
     .get();
 
-  const memory_facts = longSnap.docs.map(d => d.data());
+  const longFacts = longSnap.docs.map(d => d.data());
 
-  return {
-    ...state,
-    sessionId,
-    memory_summary,
-    memory_facts,
-  };
+  return { ...state, sessionId, memory_summary: shortSummary, memory_facts: longFacts };
 }
 
-/* ============================================================
-   NODE 2 — ANALYZE (LLM + RULE OVERRIDES)
-============================================================ */
+/**
+ * STEP 1: Explicit Escalation Criteria in nodeAnalyze
+ */
 async function nodeAnalyze(state) {
   const prompt = `
-You are a medical pre-screening AI.
+    You are a medical pre-screening AI.
 
-PAST CONTEXT:
-${state.memory_summary || "None"}
+    You must classify triage using the following STRICT rules:
 
-KNOWN FACTS:
-${JSON.stringify(state.memory_facts || [])}
+    TRIAGE DEFINITIONS:
 
-USER MESSAGE:
-${state.message}
+    HIGH:
+    - Chest pain, breathing difficulty, fainting, seizures
+    - Severe bleeding, sudden weakness, confusion
+    - Symptoms involving heart, brain, lungs
+    - Worsening symptoms with past high-risk history
+    - Any symptom suggesting immediate danger
 
-Respond ONLY in valid JSON:
-{
-  "category": "symptoms | test_report | general_question",
-  "triage": "low | medium | high",
-  "needs_doctor": true | false,
-  "followup_question": "string"
-}
-`;
+    MEDIUM:
+    - Persistent symptoms (>48 hours)
+    - Symptoms interfering with daily life
+    - Concerning but non-acute pain
+    - Requires doctor evaluation but not emergency
 
-  let parsed;
+    LOW:
+    - Mild, short-term, improving symptoms
+    - General health questions
+    - Preventive or informational queries
+
+    PAST CONTEXT SUMMARY: ${state.memory_summary || "None"}
+    KNOWN USER FACTS: ${JSON.stringify(state.memory_facts || [])}
+    CURRENT USER MESSAGE: ${state.message}
+
+    Respond ONLY in valid JSON:
+    {
+      "category": "symptoms | test_report | general_question",
+      "triage": "low | medium | high",
+      "needs_doctor": true,
+      "followup_question": "string"
+    }
+  `;
+
+  const response = await model.invoke(prompt);
+  let result;
+  
   try {
-    const res = await model.invoke(prompt);
-    parsed = JSON.parse(res.content);
-  } catch {
-    parsed = {
-      category: "general_question",
-      triage: "low",
-      needs_doctor: false,
-      followup_question: "",
+    result = JSON.parse(response.content);
+  } catch (err) {
+    console.error("Invalid JSON from analyze node:", response.content);
+    result = { 
+        category: "general_question", 
+        triage: "low", 
+        needs_doctor: false, 
+        followup_question: "" 
     };
   }
 
-  const highRisk = detectHighRisk(state.message);
-  const acuteDanger = detectAcuteDanger(state.message);
+  // --- STEP 2: RULE ENGINE PRIORITY ---
+  // You can still manually override LLM triage here if hard rules are triggered
+  let finalTriage = result.triage;
+  let finalNeedsDoctor = result.needs_doctor;
 
-  let triage = parsed.triage;
-  let needs_doctor = parsed.needs_doctor;
-  let escalation_reason = null;
-
-  if (highRisk) {
-    triage = "high";
-    needs_doctor = true;
-    escalation_reason = highRisk.label;
-  }
-
-  if (acuteDanger) {
-    triage = "high";
-    needs_doctor = true;
-    escalation_reason = "Acute danger symptom";
+  // Example: If message contains hard-coded danger words, force high triage
+  const highRiskKeywords = ["chest pain", "can't breathe", "seizure"];
+  if (highRiskKeywords.some(word => state.message.toLowerCase().includes(word))) {
+    finalTriage = "high";
   }
 
   return {
     ...state,
-    category: parsed.category,
-    triage,
-    needs_doctor,
-    followup_question: parsed.followup_question,
-    escalation_reason,
+    category: result.category,
+    triage: finalTriage,
+    needs_doctor: finalNeedsDoctor,
+    followup_question: result.followup_question
   };
 }
 
-/* ============================================================
-   NODE 3 — RETRIEVE (RAG HOOK)
-============================================================ */
-async function nodeRetrieve(state) {
-  const context =
-    "MedlinePlus advises that serious or chronic conditions require professional medical supervision.";
-  return { ...state, context };
+/**
+ * STEP B — Emergency path
+ */
+async function nodeEmergency(state) {
+  const prompt = `
+    You are a medical safety assistant. The situation is HIGH RISK.
+    User message: ${state.message}
+    Instructions:
+    - Be calm but firm
+    - Emphasize urgency
+    - Recommend emergency services if appropriate
+    - NO diagnosis
+    - NO medication advice
+  `;
+  const response = await model.invoke(prompt);
+  return { ...state, answer: response.content, sources: ["Emergency Safety Protocol"] };
 }
 
-/* ============================================================
-   NODE 4 — FINAL RESPONSE
-============================================================ */
+/**
+ * STEP C — Escalation path
+ */
+async function nodeEscalation(state) {
+  const prompt = `
+    You are a medical assistant. Professional evaluation is advised.
+    User message: ${state.message}
+    Explain:
+    - Why a doctor visit is recommended
+    - What type of specialist may help
+    - What symptoms to monitor
+    - When to seek urgent care
+    Do NOT diagnose.
+  `;
+  const response = await model.invoke(prompt);
+  return { ...state, answer: response.content, sources: ["Clinical Care Guidance"] };
+}
+
+async function nodeRetrieve(state) {
+  const mockContext = "MedlinePlus suggests standard care involves monitoring symptoms and hydration.";
+  return { ...state, context: mockContext };
+}
+
 async function nodeFinal(state) {
   const prompt = `
-You are a medical assistant.
-
-USER MESSAGE:
-${state.message}
-
-TRIAGE LEVEL:
-${state.triage}
-
-FOLLOW-UP QUESTION:
-${state.followup_question || "None"}
-
-CONTEXT:
-${state.context}
-
-Respond clearly, calmly, and safely.
-Do NOT diagnose or prescribe medication.
-`;
-
+    Context: ${state.context}
+    User message: ${state.message}
+    If a follow-up question exists, ask it clearly.
+    Follow-up question: ${state.followup_question || "None"}
+    Provide a safe, clear medical response.
+  `;
   const response = await model.invoke(prompt);
-
-  return {
-    ...state,
-    answer: response.content,
-    sources: ["MedlinePlus"],
-  };
+  return { ...state, answer: response.content, sources: ["MedlinePlus Database"] };
 }
 
-/* ============================================================
-   NODE 5 — STORE MEMORY + UPDATE SESSION
-============================================================ */
 async function nodeStoreMemory(state) {
   const { appId, userId, sessionId } = state;
   if (!db || !userId) return state;
 
-  const summaryPrompt = `
-Summarize this interaction in 3 lines focusing on risk and concerns.
-User: ${state.message}
-Assistant: ${state.answer}
-`;
+  const summaryPrompt = `Summarize this medical exchange in 3 lines.\nUser: ${state.message}\nAssistant: ${state.answer}`;
   const summaryRes = await model.invoke(summaryPrompt);
-
-  await db
-    .doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`)
-    .set(
-      {
-        summary: summaryRes.content,
-        lastUpdatedAt: Date.now(),
-      },
-      { merge: true }
-    );
+  
+  await db.doc(`artifacts/${appId}/users/${userId}/agent_memory_short/${sessionId}`).set({
+    summary: summaryRes.content,
+    lastUpdatedAt: Date.now()
+  }, { merge: true });
 
   if (state.triage === "high" || state.needs_doctor) {
-    await db
-      .collection(`artifacts/${appId}/users/${userId}/agent_memory_long`)
-      .add({
-        type: "risk",
-        value: state.escalation_reason || state.message.slice(0, 200),
-        confidence: 1.0,
-        lastSeenAt: Date.now(),
-        source: "rule_engine",
-      });
+    await db.collection(`artifacts/${appId}/users/${userId}/agent_memory_long`).add({
+      type: "risk",
+      value: state.message.slice(0, 200),
+      confidence: 0.9,
+      lastSeenAt: Date.now(),
+      source: "agent"
+    });
   }
-
-  await db
-    .doc(`artifacts/${appId}/users/${userId}/agent_sessions/${sessionId}`)
-    .set(
-      {
-        lastActiveAt: Date.now(),
-        currentTriage: state.triage,
-        currentGoal:
-          state.triage === "high"
-            ? "Ongoing risk monitoring and escalation"
-            : "General health guidance",
-        active: true,
-      },
-      { merge: true }
-    );
-
   return state;
 }
 
-/* ============================================================
-   GRAPH DEFINITION
-============================================================ */
+// --- WORKFLOW CONSTRUCTION ---
+
 const workflow = new StateGraph({ channels: graphState })
   .addNode("load_memory", nodeLoadMemory)
   .addNode("analyze", nodeAnalyze)
+  .addNode("route", nodeRoute)
+  .addNode("emergency", nodeEmergency)
+  .addNode("escalation", nodeEscalation)
   .addNode("retrieve", nodeRetrieve)
   .addNode("final", nodeFinal)
   .addNode("store_memory", nodeStoreMemory);
 
 workflow.setEntryPoint("load_memory");
 workflow.addEdge("load_memory", "analyze");
-workflow.addEdge("analyze", "retrieve");
+
+// STEP D: Conditional Edges
+workflow.addConditionalEdges(
+  "analyze",
+  nodeRoute,
+  {
+    emergency: "emergency",
+    escalation: "escalation",
+    retrieve: "retrieve",
+  }
+);
+
 workflow.addEdge("retrieve", "final");
 workflow.addEdge("final", "store_memory");
+workflow.addEdge("emergency", "store_memory");
+workflow.addEdge("escalation", "store_memory");
 workflow.addEdge("store_memory", END);
 
 export const graph = workflow.compile();
