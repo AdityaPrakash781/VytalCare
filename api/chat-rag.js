@@ -154,8 +154,15 @@ export default async function handler(req, res) {
       let lastErr = null;
       for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
+       
           // ensure invoke completes quickly — wrap with timeout
-          const invokePromise = medicalGraph.invoke({ message, history });
+const invokePromise = medicalGraph.invoke({ 
+  message, 
+  history,
+  appId: body.appId,     // <--- PASS TO GRAPH
+  userId: body.userId,   // <--- PASS TO GRAPH
+  sessionId: body.sessionId // <--- PASS TO GRAPH
+});
           const result = await Promise.race([invokePromise, timeoutPromise(10000, "LangGraph invoke timed out (10s)")]);
           // Expect result to contain .answer and .sources / .sources may be array
           if (!result) throw new Error("Empty LangGraph result");
