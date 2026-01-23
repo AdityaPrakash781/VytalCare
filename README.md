@@ -334,6 +334,9 @@ VytalCare uses Firestore with the following structure under `/artifacts/{appId}/
 | **hydration** (Collection) | `amount`, `goal`, `date`, `updatedAt` | Daily water intake tracking (auto-resets at midnight) | `{ amount: 1500, goal: 2000, date: "2024-12-12" }` |
 | **chats** (Collection) | `role`, `text`, `sources[]`, `createdAt` | AI chatbot conversation history | `{ role: "assistant", text: "Your health score...", createdAt: 1702385400000 }` |
 | **health_scores** (Collection) | `score`, `components`, `date`, `calculatedAt` | Daily health score calculations | `{ score: 85, components: { steps: 20, sleep: 18 }, date: "2024-12-12" }` |
+|**agent_memory_short**(Collection)| `summary`, `lastUpdatedAt`| Stores the session-specific summary for immediate context. | `{"summary": "User inquired about recurring knee pain after jogging. Triage was set to Medium. Recommended physical therapy and monitoring for swelling.", "lastUpdatedAt": 1705942200000 } `|
+|**agent_memory_long**(Collection)|`type`, `value`, `reason`, `lastSeenAt`, `source`, `confidence` |Stores high-signal risks (e.g., specific symptoms) for longitudinal tracking. |` { "type": "risk", "value": "User reported sharp chest pain when climbing stairs.", "reason": "High-risk symptoms detected (Critical Triage)", "confidence": 0.9, "lastSeenAt": 1705942200000, "source": "agent" }` |
+
 
 ### Data Access Patterns
 
