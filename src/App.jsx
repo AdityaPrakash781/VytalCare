@@ -2836,11 +2836,12 @@ if (index >= words.length) {
             setTimeout(async () => {
               setStreamingMessage(null); 
               
-              // ✅ MODIFIED: Create the message object including the MedlinePlus sources
+              // ✅ FIX: This captures the 'modelSources' from the RAG response 
+              // and saves them directly into the Firestore document.
               const modelMessage = {
                 role: "assistant",
                 text: modelText,
-                sources: modelSources, // This captures the URLs from your RAG response
+                sources: modelSources, // These are your MedlinePlus URLs
                 createdAt: Date.now()
               };
 
