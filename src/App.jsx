@@ -2830,37 +2830,13 @@ RULES:
           });
 
           index++;
-if (index >= words.length) {
+
+          if (index >= words.length) {
             clearInterval(interval);
             // Small delay to let the user see the final word before moving to history
-            setTimeout(async () => {
+            setTimeout(() => {
               setStreamingMessage(null); 
-              
-              // ✅ FIX: This captures the 'modelSources' from the RAG response 
-              // and saves them directly into the Firestore document.
-              const modelMessage = {
-                role: "assistant",
-                text: modelText,
-                sources: modelSources, // These are your MedlinePlus URLs
-                createdAt: Date.now()
-              };
-
-              if (db && userId) {
-                try {
-                  const chatCollectionRef = collection(
-                    db,
-                    `/artifacts/${appId}/users/${userId}/chats`
-                  );
-                  await addDoc(chatCollectionRef, modelMessage);
-                } catch (e) {
-                  console.error("Error saving model message:", e);
-                }
-              }
-
-              // Handle voice if enabled
-              if (speechEnabled || isVoiceMode) {
-                speakText(modelText);
-              }
+              saveFinalModelMessage();
             }, 300);
           }
         }, 40); // 40ms per word is the "Goldilocks" speed for reading
@@ -5042,74 +5018,49 @@ Rules:
                        </p>
                     )}
                     {Array.isArray(msg.sources) && msg.sources.length > 0 && (
-  <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/40">
-    <p className="text-xs font-semibold text-text-muted dark:text-slate-400 mb-2 flex items-center gap-2">
-      <Link size={14} />
-      MedlinePlus Sources
-    </p>
-    <div className="flex flex-wrap gap-2">
-      {msg.sources.map((src, i) => (
-        <a
-          key={i}
-          href={src}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs text-primary transition shadow-sm"
-        >
-          Source {i + 1}
-          <ExternalLink size={12} />
-        </a>
-      ))}
-    </div>
-  </div>
-)}
+                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/40">
+                        <p className="text-xs font-semibold text-text-muted dark:text-slate-400 mb-2 flex items-center gap-2">
+                          <Link size={14} />
+                          Sources
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.sources.map((src, i) => (
+                            <a
+                              key={i}
+                              href={src}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs text-primary transition shadow-sm"
+                            >
+                              Source {i + 1}
+                              <ExternalLink size={12} />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               } else {
-  return (
-    <div className="w-full">
-      <div
-        className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
-        dangerouslySetInnerHTML={{
-          __html: (() => {
-            let html = msg.text || "";
-            html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-            html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
-            let listCounter = 0;
-            html = html.replace(/^[\s]*[-•*]\s+(.*)$/gm, (match, content) => {
-              listCounter++;
-              return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
-            });
-            return html;
-          })(),
-        }}
-      />
-      {/* ✅ ADDED: Sources for non-structured text messages */}
-      {Array.isArray(msg.sources) && msg.sources.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700/40">
-          <p className="text-xs font-semibold text-text-muted dark:text-slate-400 mb-2 flex items-center gap-2">
-            <Link size={14} />
-            MedlinePlus Sources
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {msg.sources.map((src, i) => (
-              <a
-                key={i}
-                href={src}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs text-primary transition shadow-sm"
-              >
-                Source {i + 1}
-                <ExternalLink size={12} />
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+                return (
+                  <div
+                    className="whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{
+                      __html: (() => {
+                        let html = msg.text || "";
+                        html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+                        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
+                        let listCounter = 0;
+                        html = html.replace(/^[\s]*[-•*]\s+(.*)$/gm, (match, content) => {
+                          listCounter++;
+                          return `<span class="font-semibold text-primary">${listCounter}.</span> ${content}`;
+                        });
+                        return html;
+                      })(),
+                    }}
+                  />
+                );
+              }
             })()}
           </div>
         </div>
