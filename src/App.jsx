@@ -2830,13 +2830,36 @@ RULES:
           });
 
           index++;
-
-          if (index >= words.length) {
+if (index >= words.length) {
             clearInterval(interval);
             // Small delay to let the user see the final word before moving to history
-            setTimeout(() => {
+            setTimeout(async () => {
               setStreamingMessage(null); 
-              saveFinalModelMessage();
+              
+              // ✅ MODIFIED: Create the message object including the MedlinePlus sources
+              const modelMessage = {
+                role: "assistant",
+                text: modelText,
+                sources: modelSources, // This captures the URLs from your RAG response
+                createdAt: Date.now()
+              };
+
+              if (db && userId) {
+                try {
+                  const chatCollectionRef = collection(
+                    db,
+                    `/artifacts/${appId}/users/${userId}/chats`
+                  );
+                  await addDoc(chatCollectionRef, modelMessage);
+                } catch (e) {
+                  console.error("Error saving model message:", e);
+                }
+              }
+
+              // Handle voice if enabled
+              if (speechEnabled || isVoiceMode) {
+                speakText(modelText);
+              }
             }, 300);
           }
         }, 40); // 40ms per word is the "Goldilocks" speed for reading
