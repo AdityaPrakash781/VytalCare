@@ -1,6 +1,7 @@
 <div align="center">
   <a href="https://health-navigator-copy.vercel.app/"><img src="src/assets/Finalicon.png" alt="VytalCare Logo" width="120" height="120" /> </a>
   <h1 align="center">VytalCare</h1>
+  <h3 align="center">Click on the logo to visit the deployed app</h3>
   <strong>The Agentic AI Health Companion</strong>
   <br />
   <br />
