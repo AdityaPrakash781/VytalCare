@@ -9,8 +9,10 @@
     "start": "vite preview"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@langchain/langgraph": "latest",
     "@qdrant/js-client-rest": "latest",
+    "axios": "^1.13.6",
     "dotenv": "^16.4.5",
     "firebase": "^10.8.0",
     "html2canvas": "^1.4.1",

@@ -1,0 +1,52 @@
+﻿≡ƒöì Testing for: fever
+≡ƒöÄ Querying MedlinePlus Connect for 'fever' ΓåÆ R50.9
+URL: https://connect.medlineplus.gov/service?mainSearchCriteria.v.cs=2.16.840.1.113883.6.90&mainSearchCriteria.v.c=R50.9&informationRecipient.languageCode.c=en&knowledgeResponseType=application/json
+≡ƒôä Found 1 entries.
+≡ƒÜÇ Starting embedAndUpload...
+≡ƒôí Preparing Qdrant upsert: Vector Size=3072, Term=fever, Title=Fever
+node : Γ¥î Qdrant upsert 
+failed: Bad Request
+At line:1 char:1
++ node debug-ingest.js > 
+debug-ingest.out 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecifi    ed: (Γ¥î 
+Qdrant up    sert failed: 
+Bad R    equest:String) [],  
+   RemoteException
+    + FullyQualifiedEr    
+rorId : NativeComm    
+andError
+ 
+Γ¥î Test failed!
+Error Message: Bad Request
+Error Stack: Error: Bad 
+Request
+    at Object.fun [as 
+upsertPoints] (file:///C:/Use
+rs/adipr/Documents/VytalCare/
+VytalCare-Vercel/node_modules
+/@qdrant/openapi-typescript-f
+etch/dist/esm/fetcher.js:169:
+23)
+    at process.processTicksAn
+dRejections (node:internal/pr
+ocess/task_queues:103:5)
+    at async 
+QdrantClient.upsert (file:///
+C:/Users/adipr/Documents/Vyta
+lCare/VytalCare-Vercel/node_m
+odules/@qdrant/js-client-rest
+/dist/esm/qdrant-client.js:57
+6:26)
+    at async embedAndUpload (
+file:///C:/Users/adipr/Docume
+nts/VytalCare/VytalCare-Verce
+l/ingest/embed_and_upload.js:
+71:7)
+    at async test (file:///C:
+/Users/adipr/Documents/VytalC
+are/VytalCare-Vercel/debug-in
+gest.js:17:7)

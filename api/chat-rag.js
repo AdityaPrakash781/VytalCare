@@ -5,18 +5,8 @@ import { QdrantClient } from "@qdrant/js-client-rest";
 
 dotenv.config();
 
-// Try to import medicalGraph (LangGraph) but don't hard-fail if it's broken
-let medicalGraph = null;
-try {
-  // this may throw at import-time in some LangGraph misconfigs; catch it
-  // eslint-disable-next-line import/no-unresolved
-  // Note: keep this dynamic so serverless cold starts don't crash if module breaks
-  // Caller will check medicalGraph !== null
-  medicalGraph = (await import("../workflow/medical-graph.js")).default;
-} catch (e) {
-  console.warn("LangGraph import failed — falling back to direct RAG. Error:", e?.message || e);
-  medicalGraph = null;
-}
+// Removed LangGraph dynamic import to fix Vercel deploy issues
+const medicalGraph = null;
 
 // Qdrant client
 const qdrant = new QdrantClient({
@@ -26,15 +16,15 @@ const qdrant = new QdrantClient({
   checkCompatibility: process.env.QDRANT_CHECK_COMPAT !== "false"
 });
 
-// ---------- Helpers: Gemini REST (2.5 Flash) and Embeddings ----------
-const GEMINI_MODEL = "models/gemini-2.5-flash";
+// ---------- Helpers: Gemini REST (1.5 Flash) and Embeddings ----------
+const GEMINI_MODEL = "models/gemini-1.5-flash";
 const EMBED_MODEL = "models/text-embedding-004";
 
 const GEMINI_URL = (key) =>
-  `https://generativelanguage.googleapis.com/v1/${GEMINI_MODEL}:generateContent?key=${key}`;
+  `https://generativelanguage.googleapis.com/v1beta/${GEMINI_MODEL}:generateContent?key=${key}`;
 
 const EMBED_URL = (key) =>
-  `https://generativelanguage.googleapis.com/v1/${EMBED_MODEL}:embedContent?key=${key}`;
+  `https://generativelanguage.googleapis.com/v1beta/${EMBED_MODEL}:embedContent?key=${key}`;
 
 async function generateGeminiResponse(apiKey, prompt, timeoutMs = 20000) {
   if (!apiKey) throw new Error("GEMINI API key missing for fallback path");

@@ -1,40 +1,37 @@
-// ingest/retrieve_context.js
-
 import dotenv from "dotenv";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { QdrantClient } from "@qdrant/js-client-rest";
 
 dotenv.config();
 
-// Gemini embedding model
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const embedModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
 
-// Qdrant client
+// ✅ FIXED embedding model
+const embeddingModel = genAI.getGenerativeModel({
+  model: "gemini-embedding-001",
+});
+
 const qdrant = new QdrantClient({
   url: process.env.QDRANT_URL,
   apiKey: process.env.QDRANT_API_KEY,
+  checkCompatibility: false,
 });
 
-/**
- * Convert user question → embedding → Qdrant search → relevant context
- */
 export async function retrieveContext(query, topK = 3) {
-  console.log(`🔎 Embedding user query for retrieval: "${query}"`);
+  console.log(`🔎 Embedding user query: "${query}"`);
 
-  // 1️⃣ Embed the user query
-  const embeddingResponse = await embedModel.embedContent(query);
-  const queryVector = embeddingResponse.embedding.values;
+  // ✅ FIXED embedding request
+  const result = await embeddingModel.embedContent(query);
 
-  // 2️⃣ Search Qdrant for similar medical documents
+  const queryVector = result.embedding.values;
+
   const searchResult = await qdrant.search("medical_knowledge", {
     vector: queryVector,
     limit: topK,
   });
 
-  console.log(`📡 Found ${searchResult.length} relevant documents.`);
+  console.log(`📡 Found ${searchResult.length} documents.`);
 
-  // 3️⃣ Extract raw text context
   const context = searchResult
     .map((hit, i) => {
       const p = hit.payload;
