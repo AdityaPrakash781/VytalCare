@@ -16,8 +16,8 @@ const qdrant = new QdrantClient({
   checkCompatibility: process.env.QDRANT_CHECK_COMPAT !== "false"
 });
 
-// ---------- Helpers: Gemini REST (1.5 Flash) and Embeddings ----------
-const GEMINI_MODEL = "models/gemini-1.5-flash";
+// ---------- Helpers: Gemini REST (2.5 Flash) and Embeddings ----------
+const GEMINI_MODEL = "models/gemini-2.5-flash";
 const EMBED_MODEL = "models/text-embedding-004";
 
 const GEMINI_URL = (key) =>

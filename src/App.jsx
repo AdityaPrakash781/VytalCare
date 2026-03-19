@@ -2701,8 +2701,8 @@ Keep tables compact and aligned properly. Focus on key improvements and trends.`
           console.log("File uploaded successfully:", fileUri);
 
           // 2. Generate Content using the File URI
-          // We use v1beta and gemini-1.5-flash (your app's standard)
-          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+          // We use v1beta and gemini-2.5-flash (your app's standard)
+          const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
           const systemInstruction = {
             parts: [{
