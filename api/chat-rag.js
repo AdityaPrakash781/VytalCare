@@ -123,7 +123,7 @@ export default async function handler(req, res) {
   }
 
   // Check required environment
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   const qdrantUrl = process.env.QDRANT_URL;
   const qdrantKey = process.env.QDRANT_API_KEY;
 
